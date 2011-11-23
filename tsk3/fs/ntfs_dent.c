@@ -1061,7 +1061,7 @@ ntfs_dir_open_meta(TSK_FS_INFO * a_fs, TSK_FS_DIR ** a_fs_dir,
         free(idxalloc);
     }
 
-
+#if 0 /* Orphan processing is dead slow */
     // get the orphan files
     // load and cache the map if it has not already been done
     if (ntfs->orphan_map == NULL) {
@@ -1126,7 +1126,7 @@ ntfs_dir_open_meta(TSK_FS_INFO * a_fs, TSK_FS_DIR ** a_fs_dir,
         }
         tsk_fs_name_free(fs_name);
     }
-
+#endif
 
     return retval_final;
 }
