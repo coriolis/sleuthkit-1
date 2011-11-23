@@ -65,6 +65,7 @@ extern "C" {
         TSK_IMG_TYPE_AFF_ANY = 0x0020,  ///< Any format supported by AFFLIB (including beta ones)
 
         TSK_IMG_TYPE_EWF_EWF = 0x0040,  ///< EWF version
+        TSK_IMG_TYPE_QEMU    = 0x0080,  ///< QEmu image handler 
 
         TSK_IMG_TYPE_UNSUPP = 0xffff,   ///< Unsupported disk image type
     } TSK_IMG_TYPE_ENUM;

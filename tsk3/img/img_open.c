@@ -18,6 +18,7 @@
 
 #include "raw.h"
 #include "split.h"
+#include "qemu_img.h"
 
 #if HAVE_LIBAFFLIB
 typedef int bool;
@@ -253,6 +254,9 @@ tsk_img_open(int num_img,
         img_info = ewf_open(num_img, images, a_ssize);
         break;
 #endif
+    case TSK_IMG_TYPE_QEMU:
+        img_info = qemu_open(images[0], a_ssize);
+        break;
 
     default:
         tsk_error_reset();

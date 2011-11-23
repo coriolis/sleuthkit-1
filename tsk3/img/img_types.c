@@ -41,6 +41,7 @@ static IMG_TYPES img_open_table[] = {
     {"ewf", TSK_IMG_TYPE_EWF_EWF, "Expert Witness format (encase)"},
 #endif
     {"split", TSK_IMG_TYPE_RAW_SPLIT, "Split raw files"},
+    {"QEMU", TSK_IMG_TYPE_QEMU, "QEmu image handler"},
     {0},
 };
 

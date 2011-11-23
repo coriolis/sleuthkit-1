@@ -1,0 +1,9 @@
+*.a
+*.o
+*.log
+*.so
+*.la
+*.lo
+*.swp
+.deps/
+.libs/
