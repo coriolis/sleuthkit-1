@@ -4,7 +4,7 @@ LDFLAGS += -static
 EXTRA_DIST = .indent.pro fscheck.cpp
 
 bin_PROGRAMS = blkcalc blkcat blkls blkstat ffind fls fsstat icat ifind ils \
-    istat jcat jls
+    istat jcat jls slt
 blkcalc_SOURCES = blkcalc.cpp
 blkcat_SOURCES = blkcat.cpp
 blkls_SOURCES = blkls.cpp
@@ -18,6 +18,7 @@ ils_SOURCES = ils.cpp
 istat_SOURCES = istat.cpp
 jcat_SOURCES = jcat.cpp
 jls_SOURCES = jls.cpp
+slt_SOURCES = slt.cpp
 
 indent:
 	indent *.cpp 
