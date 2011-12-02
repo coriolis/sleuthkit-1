@@ -261,7 +261,7 @@ main(int argc, char **argv1)
             tsk_error_print(stderr);
             exit(1);
         }
-        if (imgaddr == 0) {
+        if (imgtype == TSK_IMG_TYPE_QEMU) {
             imgaddr = detect_partition_offset(img);
         }
         if ((imgaddr * img->sector_size) >= img->size) {
@@ -293,7 +293,7 @@ main(int argc, char **argv1)
             tsk_error_print(stderr);
             exit(1);
         }
-        if (imgaddr == 0) {
+        if (imgtype == TSK_IMG_TYPE_QEMU) {
             imgaddr = detect_partition_offset(img);
         }
         if ((imgaddr * img->sector_size) >= img->size) {
