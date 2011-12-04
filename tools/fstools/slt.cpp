@@ -110,9 +110,29 @@ main(int argc, char **argv1)
     img_name = strdup(argv[argc - 1]);
     process(argc, argv);
 
+    /*
+     * "This is extremely nasty, but we can't prosecute you for that."
+     * "Agreed."
+     */
+
+    /* After processing the first request, we hang around reading stdin. In
+     * case we get another request for the same image, we can process it in the
+     * same context, using the already-open image and fs. This saves a bunch of
+     * time in partition, image and FS detection and metadata loading for
+     * subsequent requests, greatly improving performance.
+     *
+     * The sender (jlfs.js) is oblivious to the presence of this mechanism.  It
+     * always emits request as a full CLI command: slt -i QEMU -I <inum> -O
+     * /dev/clipboard <imagename>
+     *
+     * We have to parse a shell line and convert it to an argv, taking care of
+     * backslash escaped characters. 
+     */
+
     for (i = 0; i < NARGV; i++) {
         nargv[i] = (char *)calloc(256, 1);
     }
+
     while (fgets(line, 1024, stdin)) {
         for (i = 0; i < NARGV; i++) {
             memset(nargv[i], 0, 256);
@@ -147,6 +167,9 @@ main(int argc, char **argv1)
             nargc++;
         }
         
+        if (nargc == 0) {
+            exit(0);
+        }
         if (strcmp(nargv[nargc - 1], img_name) == 0) {
             process(nargc, nargv);
         } else {
@@ -335,6 +358,10 @@ process(int argc, char **argv)
         }
     }
 
+    if (g_ofile == NULL) {
+        g_ofile = stdout;
+    }
+
     if (!g_img && (g_img =
             tsk_img_open(argc - OPTIND, &argv[OPTIND],
                 g_imgtype, ssize)) == NULL) {
@@ -379,7 +406,7 @@ process(int argc, char **argv)
     fs->close(fs);
     img->close(img);
     */
-    if (g_ofile) {
+    if (g_ofile != stdout) {
         fclose(g_ofile);
         g_ofile = NULL;
     }
@@ -565,48 +592,28 @@ printit(TSK_FS_FILE * fs_file, const char *a_path,
         // lazy way to find out how many dirs there could be
         for (i = 0; a_path[i] != '\0'; i++) {
             if ((a_path[i] == '/') && (i != 0)) {
-                tsk_fprintf(stdout, "+");
-                if (g_ofile) {
-                    tsk_fprintf(g_ofile, "+");
-                }
+                tsk_fprintf(g_ofile, "+");
                 printed = 1;
             }
         }
         if (printed)
-            tsk_fprintf(stdout, " ");
-            if (g_ofile) {
-                tsk_fprintf(g_ofile, " ");
-            }
+            tsk_fprintf(g_ofile, " ");
     }
 
 
     if (fls_data->flags & TSK_FS_FLS_MAC) {
-        tsk_fs_name_print_mac(stdout, fs_file, a_path,
+        tsk_fs_name_print_mac(g_ofile, fs_file, a_path,
             fs_attr, fls_data->macpre, fls_data->sec_skew);
-        if (g_ofile) {
-            tsk_fs_name_print_mac(g_ofile, fs_file, a_path,
-                fs_attr, fls_data->macpre, fls_data->sec_skew);
-        }
     }
     else if (fls_data->flags & TSK_FS_FLS_LONG) {
-        tsk_fs_name_print_long(stdout, fs_file, a_path, fs_file->fs_info,
+        tsk_fs_name_print_long(g_ofile, fs_file, a_path, fs_file->fs_info,
             fs_attr, TSK_FS_FLS_FULL & fls_data->flags ? 1 : 0,
             fls_data->sec_skew);
-        if (g_ofile) {
-            tsk_fs_name_print_long(g_ofile, fs_file, a_path, fs_file->fs_info,
-                fs_attr, TSK_FS_FLS_FULL & fls_data->flags ? 1 : 0,
-                fls_data->sec_skew);
-        }
     }
     else {
-        tsk_fs_name_print(stdout, fs_file, a_path, fs_file->fs_info,
+        tsk_fs_name_print(g_ofile, fs_file, a_path, fs_file->fs_info,
             fs_attr, TSK_FS_FLS_FULL & fls_data->flags ? 1 : 0);
-        tsk_printf("\n");
-        if (g_ofile) {
-            tsk_fs_name_print(g_ofile, fs_file, a_path, fs_file->fs_info,
-                fs_attr, TSK_FS_FLS_FULL & fls_data->flags ? 1 : 0);
-            tsk_fprintf(g_ofile, "\n");
-        }
+        tsk_fprintf(g_ofile, "\n");
     }
 }
 
