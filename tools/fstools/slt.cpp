@@ -20,18 +20,26 @@
 **
 */
 #include "tsk3/tsk_tools_i.h"
+#include "tsk3/fs/tsk_fs_i.h"
 #include <locale.h>
 #include <time.h>
 
 static TSK_TCHAR *progname;
 static TSK_DADDR_T detect_partition_offset(TSK_IMG_INFO *img);
+static int process(int argc, char **argv1);
+static uint8_t tsk_fs_fls2(TSK_FS_INFO * fs, TSK_FS_FLS_FLAG_ENUM lclflags,
+    TSK_INUM_T inode, TSK_FS_DIR_WALK_FLAG_ENUM flags, TSK_TCHAR * tpre,
+    int32_t skew);
+static uint8_t tsk_fs_icat2(TSK_FS_INFO * fs, TSK_INUM_T inum,
+    TSK_FS_ATTR_TYPE_ENUM type, uint8_t type_used,
+    uint16_t id, uint8_t id_used, TSK_FS_FILE_WALK_FLAG_ENUM flags);
 
 void
 usage()
 {
     TFPRINTF(stderr,
         _TSK_T
-        ("usage: %s [-adDFlpruvV] [-f fstype] [-i imgtype] [-b dev_sector_size] [-m dir/] [-o imgoffset] [-z ZONE] [-s seconds] image [images] [inode]\n"),
+        ("usage: %s [-adDFlpruvV] [-f fstype] [-i imgtype] [-b dev_sector_size] [-m dir/] [-o imgoffset] [-z ZONE] [-s seconds] [-I inode] image [images] \n"),
         progname);
     tsk_fprintf(stderr,
         "\tIf [inode] is not given, the root directory is used\n");
@@ -52,6 +60,8 @@ usage()
         "\t      dir/ as the actual mount point of the image\n");
     tsk_fprintf(stderr,
         "\t-o imgoffset: Offset into image file (in sectors)\n");
+    tsk_fprintf(stderr,
+        "\t-I inode: Inode specification\n");
     tsk_fprintf(stderr, "\t-p: Display full path for each file\n");
     tsk_fprintf(stderr, "\t-r: Recurse on directory entries\n");
     tsk_fprintf(stderr, "\t-u: Display undeleted entries only\n");
@@ -65,31 +75,25 @@ usage()
     exit(1);
 }
 
+TSK_IMG_TYPE_ENUM g_imgtype = TSK_IMG_TYPE_DETECT;
+TSK_IMG_INFO *g_img = NULL;
+
+TSK_OFF_T g_imgaddr = 0;
+TSK_FS_TYPE_ENUM g_fstype = TSK_FS_TYPE_DETECT;
+TSK_FS_INFO *g_fs = NULL;
+FILE *g_ofile = NULL;
+char *img_name = NULL;
+
+
+#define NARGV 32
+
 int
 main(int argc, char **argv1)
 {
-    TSK_IMG_TYPE_ENUM imgtype = TSK_IMG_TYPE_DETECT;
-    TSK_IMG_INFO *img;
-
-    TSK_OFF_T imgaddr = 0;
-    TSK_FS_TYPE_ENUM fstype = TSK_FS_TYPE_DETECT;
-    TSK_FS_INFO *fs;
-
-    TSK_INUM_T inode;
-    int name_flags = TSK_FS_DIR_WALK_FLAG_ALLOC | TSK_FS_DIR_WALK_FLAG_UNALLOC;
-    TSK_FS_ATTR_TYPE_ENUM type = TSK_FS_ATTR_TYPE_DEFAULT;
-    int ch;
-    extern int OPTIND;
-    int fls_flags;
-    int32_t sec_skew = 0;
-    static TSK_TCHAR *macpre = NULL;
-    TSK_TCHAR **argv;
-    unsigned int ssize = 0;
-    TSK_TCHAR *cp;
-    int tsk_icat = 0;
-    uint16_t id = 0;
-    uint8_t id_used, type_used = 0;
-    int retval;
+    char line[1024], orig[1024];
+    int nargc;
+    char *nargv[NARGV], *ptr, *token, **argv;
+    int i;
 
 #ifdef TSK_WIN32
     // On Windows, get the wide arguments (mingw doesn't support wmain)
@@ -101,14 +105,82 @@ main(int argc, char **argv1)
 #else
     argv = (TSK_TCHAR **) argv1;
 #endif
+    setlocale(LC_ALL, "");
+
+    img_name = strdup(argv[argc - 1]);
+    process(argc, argv);
+
+    for (i = 0; i < NARGV; i++) {
+        nargv[i] = (char *)calloc(256, 1);
+    }
+    while (fgets(line, 1024, stdin)) {
+        for (i = 0; i < NARGV; i++) {
+            memset(nargv[i], 0, 256);
+        }
+        strcpy(orig, line);
+        ptr = token = line;
+        nargc = 0;
+        while (*ptr) {
+            if (*ptr == '>' || *ptr == '\n') {
+                *ptr = '\0';
+                break;
+            }
+            if (*ptr == '\\') {
+                *ptr = *(ptr + 1);
+                *(ptr + 1) = '\0';
+                strcat(nargv[nargc], token);
+                token = ptr = ptr + 2;
+            } else if (*ptr == ' ') {
+                *ptr++ = '\0';
+                strcat(nargv[nargc], token);
+                while (*ptr == ' ') {
+                    ptr++;
+                }
+                token = ptr;
+                nargc++;
+            } else {
+                ptr++;
+            }
+        }
+        if (token != ptr) {
+            strcat(nargv[nargc], token);
+            nargc++;
+        }
+        
+        if (strcmp(nargv[nargc - 1], img_name) == 0) {
+            process(nargc, nargv);
+        } else {
+            execl("/bin/sh", "/bin/sh", "-c", orig, NULL);
+        }
+    }
+}
+
+static int
+process(int argc, char **argv)
+{
+    TSK_INUM_T inode;
+    int name_flags = TSK_FS_DIR_WALK_FLAG_ALLOC | TSK_FS_DIR_WALK_FLAG_UNALLOC;
+    TSK_FS_ATTR_TYPE_ENUM type = TSK_FS_ATTR_TYPE_DEFAULT;
+    int ch;
+    extern int OPTIND;
+    int fls_flags;
+    int32_t sec_skew = 0;
+    static TSK_TCHAR *macpre = NULL;
+    unsigned int ssize = 0;
+    TSK_TCHAR *cp;
+    int tsk_icat = 0;
+    uint16_t id = 0;
+    uint8_t id_used, type_used = 0;
+    int retval;
+    int inode_specified = 0;
 
     progname = argv[0];
-    setlocale(LC_ALL, "");
 
     fls_flags = TSK_FS_FLS_DIR | TSK_FS_FLS_FILE;
 
+    OPTIND = 1;
     while ((ch =
-            GETOPT(argc, argv, _TSK_T("ab:cdDf:Fi:m:lo:prs:uvVz:"))) > 0) {
+            GETOPT(argc, argv, _TSK_T("ab:cdDf:Fi:I:m:lo:O:prs:uvVz:"))) > 0) {
         switch (ch) {
         case _TSK_T('?'):
         default:
@@ -140,8 +212,8 @@ main(int argc, char **argv1)
                 tsk_fs_type_print(stderr);
                 exit(1);
             }
-            fstype = tsk_fs_type_toid(OPTARG);
-            if (fstype == TSK_FS_TYPE_UNSUPP) {
+            g_fstype = tsk_fs_type_toid(OPTARG);
+            if (g_fstype == TSK_FS_TYPE_UNSUPP) {
                 TFPRINTF(stderr,
                     _TSK_T("Unsupported file system type: %s\n"), OPTARG);
                 usage();
@@ -156,12 +228,20 @@ main(int argc, char **argv1)
                 tsk_img_type_print(stderr);
                 exit(1);
             }
-            imgtype = tsk_img_type_toid(OPTARG);
-            if (imgtype == TSK_IMG_TYPE_UNSUPP) {
+            g_imgtype = tsk_img_type_toid(OPTARG);
+            if (g_imgtype == TSK_IMG_TYPE_UNSUPP) {
                 TFPRINTF(stderr, _TSK_T("Unsupported image type: %s\n"),
                     OPTARG);
                 usage();
             }
+            break;
+        case _TSK_T('I'):
+            if (tsk_fs_parse_inum(OPTARG, &inode, &type, &type_used, &id, &id_used)) {
+                TFPRINTF(stderr, _TSK_T("Unsupported inode format: %s\n"),
+                    OPTARG);
+                usage();
+            }
+            inode_specified = 1;
             break;
         case _TSK_T('l'):
             fls_flags |= TSK_FS_FLS_LONG;
@@ -171,7 +251,13 @@ main(int argc, char **argv1)
             macpre = OPTARG;
             break;
         case _TSK_T('o'):
-            if ((imgaddr = tsk_parse_offset(OPTARG)) == -1) {
+            if ((g_imgaddr = tsk_parse_offset(OPTARG)) == -1) {
+                tsk_error_print(stderr);
+                exit(1);
+            }
+            break;
+        case _TSK_T('O'):
+            if ((g_ofile = fopen(OPTARG, "w")) == NULL) {
                 tsk_error_print(stderr);
                 exit(1);
             }
@@ -249,85 +335,55 @@ main(int argc, char **argv1)
         }
     }
 
-    /* open image - there is an optional inode address at the end of args 
-     *
-     * Check the final argument and see if it is a number
-     */
-    if (tsk_fs_parse_inum(argv[argc - 1], &inode, &type, &type_used, &id, &id_used)) {
-        /* Not an inode at the end */
-        if ((img =
-                tsk_img_open(argc - OPTIND, &argv[OPTIND],
-                    imgtype, ssize)) == NULL) {
-            tsk_error_print(stderr);
-            exit(1);
-        }
-        if (imgtype == TSK_IMG_TYPE_QEMU) {
-            imgaddr = detect_partition_offset(img);
-        }
-        if ((imgaddr * img->sector_size) >= img->size) {
-            tsk_fprintf(stderr,
-                "Sector offset supplied is larger than disk image (maximum: %"
-                PRIu64 ")\n", img->size / img->sector_size);
-            exit(1);
-        }
-        if ((fs = tsk_fs_open_img(img, imgaddr * img->sector_size, fstype)) == NULL) {
-            tsk_error_print(stderr);
-            if (tsk_errno == TSK_ERR_FS_UNSUPTYPE)
-                tsk_fs_type_print(stderr);
-
-            img->close(img);
-            exit(1);
-        }
-        inode = fs->root_inum;
+    if (!g_img && (g_img =
+            tsk_img_open(argc - OPTIND, &argv[OPTIND],
+                g_imgtype, ssize)) == NULL) {
+        tsk_error_print(stderr);
+        exit(1);
     }
-    else {
-        // check that we have enough arguments
-        if (OPTIND + 1 == argc) {
-            tsk_fprintf(stderr, "Missing image name or inode\n");
-            usage();
-        }
+    if (!g_fs && g_imgtype == TSK_IMG_TYPE_QEMU) {
+        g_imgaddr = detect_partition_offset(g_img);
+    }
+    if ((g_imgaddr * g_img->sector_size) >= g_img->size) {
+        tsk_fprintf(stderr,
+            "Sector offset supplied is larger than disk image (maximum: %"
+            PRIu64 ")\n", g_img->size / g_img->sector_size);
+        exit(1);
+    }
 
-        if ((img =
-                tsk_img_open(argc - OPTIND - 1, &argv[OPTIND],
-                    imgtype, ssize)) == NULL) {
-            tsk_error_print(stderr);
-            exit(1);
-        }
-        if (imgtype == TSK_IMG_TYPE_QEMU) {
-            imgaddr = detect_partition_offset(img);
-        }
-        if ((imgaddr * img->sector_size) >= img->size) {
-            tsk_fprintf(stderr,
-                "Sector offset supplied is larger than disk image (maximum: %"
-                PRIu64 ")\n", img->size / img->sector_size);
-            exit(1);
-        }
+    if (!g_fs && (g_fs = tsk_fs_open_img(g_img, g_imgaddr * g_img->sector_size, g_fstype)) == NULL) {
+        tsk_error_print(stderr);
+        if (tsk_errno == TSK_ERR_FS_UNSUPTYPE)
+            tsk_fs_type_print(stderr);
+        g_img->close(g_img);
+        exit(1);
+    }
 
-
-        if ((fs = tsk_fs_open_img(img, imgaddr * img->sector_size, fstype)) == NULL) {
-            tsk_error_print(stderr);
-            if (tsk_errno == TSK_ERR_FS_UNSUPTYPE)
-                tsk_fs_type_print(stderr);
-            img->close(img);
-            exit(1);
-        }
+    if (!inode_specified) {
+        inode = g_fs->root_inum;
     }
 
     if (tsk_icat) {
-        retval = tsk_fs_icat(fs, inode, type, type_used, id, id_used,
+        retval = tsk_fs_icat2(g_fs, inode, type, type_used, id, id_used,
         (TSK_FS_FILE_WALK_FLAG_ENUM) 0);
     } else {
-        retval = tsk_fs_fls(fs, (TSK_FS_FLS_FLAG_ENUM) fls_flags, inode,
+        retval = tsk_fs_fls2(g_fs, (TSK_FS_FLS_FLAG_ENUM) fls_flags, inode,
             (TSK_FS_DIR_WALK_FLAG_ENUM) name_flags, macpre, sec_skew);
         tsk_error_print(stderr);
     }
     if (retval) {
         tsk_error_print(stderr);
+        exit(retval);
     }
+    /*
     fs->close(fs);
     img->close(img);
-
-    exit(retval);
+    */
+    if (g_ofile) {
+        fclose(g_ofile);
+        g_ofile = NULL;
+    }
+    return 0;
 }
 
 static uint8_t recurse = 1;
@@ -405,4 +461,296 @@ detect_partition_offset(TSK_IMG_INFO *img)
         fprintf(stderr, "Selected partition at offset %.10" PRIuDADDR " size %.10" PRIuDADDR " desc %s\n", selected_part_start, selected_part_len, selected_part_desc);
     }
     return selected_part_start;
+}
+
+/* Call back action for file_walk
+ */
+static TSK_WALK_RET_ENUM
+icat_action(TSK_FS_FILE * fs_file, TSK_OFF_T a_off, TSK_DADDR_T addr,
+    char *buf, size_t size, TSK_FS_BLOCK_FLAG_ENUM flags, void *ptr)
+{
+    if (size == 0)
+        return TSK_WALK_CONT;
+
+    if (!g_ofile) {
+        return TSK_WALK_ERROR;
+    }
+
+    if (fwrite(buf, size, 1, g_ofile) != 1) {
+        tsk_error_reset();
+        tsk_errno = TSK_ERR_FS_WRITE;
+        snprintf(tsk_errstr, TSK_ERRSTR_L,
+            "icat_action: error writing to stdout: %s", strerror(errno));
+        return TSK_WALK_ERROR;
+    }
+
+    return TSK_WALK_CONT;
+}
+
+/* Return 1 on error and 0 on success */
+static uint8_t
+tsk_fs_icat2(TSK_FS_INFO * fs, TSK_INUM_T inum,
+    TSK_FS_ATTR_TYPE_ENUM type, uint8_t type_used,
+    uint16_t id, uint8_t id_used, TSK_FS_FILE_WALK_FLAG_ENUM flags)
+{
+    TSK_FS_FILE *fs_file;
+
+#ifdef TSK_WIN32
+    if (-1 == _setmode(_fileno(stdout), _O_BINARY)) {
+        tsk_error_reset();
+        tsk_errno = TSK_ERR_FS_WRITE;
+        snprintf(tsk_errstr, TSK_ERRSTR_L,
+            "icat_lib: error setting stdout to binary: %s",
+            strerror(errno));
+        return 1;
+    }
+#endif
+
+    fs_file = tsk_fs_file_open_meta(fs, NULL, inum);
+    if (!fs_file) {
+        return 1;
+    }
+
+    if (type_used) {
+        if (id_used == 0) {
+            flags = (TSK_FS_FILE_WALK_FLAG_ENUM)(flags | TSK_FS_FILE_WALK_FLAG_NOID);
+        }
+        if (tsk_fs_file_walk_type(fs_file, type, id, flags, icat_action,
+                NULL)) {
+            tsk_fs_file_close(fs_file);
+            return 1;
+        }
+    }
+    else {
+        if (tsk_fs_file_walk(fs_file, flags, icat_action, NULL)) {
+            tsk_fs_file_close(fs_file);
+            return 1;
+        }
+    }
+
+
+    tsk_fs_file_close(fs_file);
+
+    return 0;
+}
+
+/** \internal 
+* Structure to store data for callbacks.
+*/
+typedef struct {
+    /* Time skew of the system in seconds */
+    int32_t sec_skew;
+
+    /*directory prefix for printing mactime output */
+    char *macpre;
+    int flags;
+} FLS_DATA;
+
+
+
+
+/* this is a wrapper type function that takes care of the runtime
+ * flags
+ * 
+ * fs_attr should be set to NULL for all non-NTFS file systems
+ */
+static void
+printit(TSK_FS_FILE * fs_file, const char *a_path,
+    const TSK_FS_ATTR * fs_attr, const FLS_DATA * fls_data)
+{
+    unsigned int i;
+
+    if ((!(fls_data->flags & TSK_FS_FLS_FULL)) && (a_path)) {
+        uint8_t printed = 0;
+        // lazy way to find out how many dirs there could be
+        for (i = 0; a_path[i] != '\0'; i++) {
+            if ((a_path[i] == '/') && (i != 0)) {
+                tsk_fprintf(stdout, "+");
+                if (g_ofile) {
+                    tsk_fprintf(g_ofile, "+");
+                }
+                printed = 1;
+            }
+        }
+        if (printed)
+            tsk_fprintf(stdout, " ");
+            if (g_ofile) {
+                tsk_fprintf(g_ofile, " ");
+            }
+    }
+
+
+    if (fls_data->flags & TSK_FS_FLS_MAC) {
+        tsk_fs_name_print_mac(stdout, fs_file, a_path,
+            fs_attr, fls_data->macpre, fls_data->sec_skew);
+        if (g_ofile) {
+            tsk_fs_name_print_mac(g_ofile, fs_file, a_path,
+                fs_attr, fls_data->macpre, fls_data->sec_skew);
+        }
+    }
+    else if (fls_data->flags & TSK_FS_FLS_LONG) {
+        tsk_fs_name_print_long(stdout, fs_file, a_path, fs_file->fs_info,
+            fs_attr, TSK_FS_FLS_FULL & fls_data->flags ? 1 : 0,
+            fls_data->sec_skew);
+        if (g_ofile) {
+            tsk_fs_name_print_long(g_ofile, fs_file, a_path, fs_file->fs_info,
+                fs_attr, TSK_FS_FLS_FULL & fls_data->flags ? 1 : 0,
+                fls_data->sec_skew);
+        }
+    }
+    else {
+        tsk_fs_name_print(stdout, fs_file, a_path, fs_file->fs_info,
+            fs_attr, TSK_FS_FLS_FULL & fls_data->flags ? 1 : 0);
+        tsk_printf("\n");
+        if (g_ofile) {
+            tsk_fs_name_print(g_ofile, fs_file, a_path, fs_file->fs_info,
+                fs_attr, TSK_FS_FLS_FULL & fls_data->flags ? 1 : 0);
+            tsk_fprintf(g_ofile, "\n");
+        }
+    }
+}
+
+
+/* 
+ * call back action function for dent_walk
+ */
+static TSK_WALK_RET_ENUM
+print_dent_act(TSK_FS_FILE * fs_file, const char *a_path, void *ptr)
+{
+    FLS_DATA *fls_data = (FLS_DATA *) ptr;
+
+    /* only print dirs if TSK_FS_FLS_DIR is set and only print everything
+     ** else if TSK_FS_FLS_FILE is set (or we aren't sure what it is)
+     */
+    if (((fls_data->flags & TSK_FS_FLS_DIR) &&
+            ((fs_file->meta) &&
+                (fs_file->meta->type == TSK_FS_META_TYPE_DIR)))
+        || ((fls_data->flags & TSK_FS_FLS_FILE) && (((fs_file->meta)
+                    && (fs_file->meta->type != TSK_FS_META_TYPE_DIR))
+                || (!fs_file->meta)))) {
+
+
+        /* Make a special case for NTFS so we can identify all of the
+         * alternate data streams!
+         */
+        if ((TSK_FS_TYPE_ISNTFS(fs_file->fs_info->ftype))
+            && (fs_file->meta)) {
+            uint8_t printed = 0;
+            int i, cnt;
+
+            // cycle through the attributes
+            cnt = tsk_fs_file_attr_getsize(fs_file);
+            for (i = 0; i < cnt; i++) {
+                const TSK_FS_ATTR *fs_attr =
+                    tsk_fs_file_attr_get_idx(fs_file, i);
+                if (!fs_attr)
+                    continue;
+
+                if (fs_attr->type == TSK_FS_ATTR_TYPE_NTFS_DATA) {
+                    printed = 1;
+
+                    if (fs_file->meta->type == TSK_FS_META_TYPE_DIR) {
+
+                        /* we don't want to print the ..:blah stream if
+                         * the -a flag was not given
+                         */
+                        if ((fs_file->name->name[0] == '.')
+                            && (fs_file->name->name[1])
+                            && (fs_file->name->name[2] == '\0')
+                            && ((fls_data->flags & TSK_FS_FLS_DOT) == 0)) {
+                            continue;
+                        }
+                    }
+
+                    printit(fs_file, a_path, fs_attr, fls_data);
+                }
+                else if (fs_attr->type == TSK_FS_ATTR_TYPE_NTFS_IDXROOT) {
+                    printed = 1;
+
+                    /* If it is . or .. only print it if the flags say so,
+                     * we continue with other streams though in case the 
+                     * directory has a data stream 
+                     */
+                    if (!((TSK_FS_ISDOT(fs_file->name->name)) &&
+                            ((fls_data->flags & TSK_FS_FLS_DOT) == 0)))
+                        printit(fs_file, a_path, fs_attr, fls_data);
+                }
+            }
+
+            /* A user reported that an allocated file had the standard
+             * attributes, but no $Data.  We should print something */
+            if (printed == 0) {
+                printit(fs_file, a_path, NULL, fls_data);
+            }
+
+        }
+        else {
+            /* skip it if it is . or .. and we don't want them */
+            if (!((TSK_FS_ISDOT(fs_file->name->name))
+                    && ((fls_data->flags & TSK_FS_FLS_DOT) == 0)))
+                printit(fs_file, a_path, NULL, fls_data);
+        }
+    }
+    return TSK_WALK_CONT;
+}
+
+
+/* Returns 0 on success and 1 on error */
+static uint8_t
+tsk_fs_fls2(TSK_FS_INFO * fs, TSK_FS_FLS_FLAG_ENUM lclflags,
+    TSK_INUM_T inode, TSK_FS_DIR_WALK_FLAG_ENUM flags, TSK_TCHAR * tpre,
+    int32_t skew)
+{
+    FLS_DATA data;
+
+    data.flags = lclflags;
+    data.sec_skew = skew;
+
+#ifdef TSK_WIN32
+    {
+        char *cpre;
+        size_t clen;
+        UTF8 *ptr8;
+        UTF16 *ptr16;
+        int retval;
+
+        if (tpre != NULL) {
+            clen = TSTRLEN(tpre) * 4;
+            cpre = (char *) tsk_malloc(clen);
+            if (cpre == NULL) {
+                return 1;
+            }
+            ptr8 = (UTF8 *) cpre;
+            ptr16 = (UTF16 *) tpre;
+
+            retval =
+                tsk_UTF16toUTF8_lclorder((const UTF16 **) &ptr16, (UTF16 *)
+                & ptr16[TSTRLEN(tpre) + 1], &ptr8,
+                (UTF8 *) ((uintptr_t) ptr8 + clen), TSKlenientConversion);
+            if (retval != TSKconversionOK) {
+                tsk_error_reset();
+                tsk_errno = TSK_ERR_FS_UNICODE;
+                snprintf(tsk_errstr, TSK_ERRSTR_L,
+                    "Error converting fls mactime pre-text to UTF-8 %d\n",
+                    retval);
+                return 1;
+            }
+            data.macpre = cpre;
+        }
+        else {
+            data.macpre = NULL;
+            cpre = NULL;
+        }
+
+        retval = tsk_fs_dir_walk(fs, inode, flags, print_dent_act, &data);
+
+        if (cpre)
+            free(cpre);
+
+        return retval;
+    }
+#else
+    data.macpre = tpre;
+    return tsk_fs_dir_walk(fs, inode, flags, print_dent_act, &data);
+#endif
 }
