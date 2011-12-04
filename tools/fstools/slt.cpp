@@ -39,11 +39,12 @@ usage()
 {
     TFPRINTF(stderr,
         _TSK_T
-        ("usage: %s [-adDFlpruvV] [-f fstype] [-i imgtype] [-b dev_sector_size] [-m dir/] [-o imgoffset] [-z ZONE] [-s seconds] [-I inode] image [images] \n"),
+        ("usage: %s [-acdDFlpruvV] [-f fstype] [-i imgtype] [-b dev_sector_size] [-m dir/] [-o imgoffset] [-z ZONE] [-s seconds] [-I inode] image [images] \n"),
         progname);
     tsk_fprintf(stderr,
         "\tIf [inode] is not given, the root directory is used\n");
     tsk_fprintf(stderr, "\t-a: Display \".\" and \"..\" entries\n");
+    tsk_fprintf(stderr, "\t-c: icat the inode\n");
     tsk_fprintf(stderr, "\t-d: Display deleted entries only\n");
     tsk_fprintf(stderr, "\t-D: Display only directories\n");
     tsk_fprintf(stderr, "\t-F: Display only files\n");
@@ -201,7 +202,7 @@ process(int argc, char **argv)
 
     fls_flags = TSK_FS_FLS_DIR | TSK_FS_FLS_FILE;
 
-    OPTIND = 1;
+    OPTIND = 0;
     while ((ch =
             GETOPT(argc, argv, _TSK_T("ab:cdDf:Fi:I:m:lo:O:prs:uvVz:"))) > 0) {
         switch (ch) {
@@ -222,6 +223,9 @@ process(int argc, char **argv)
                     OPTARG);
                 usage();
             }
+            break;
+        case _TSK_T('c'):
+            tsk_icat = 1;
             break;
         case _TSK_T('d'):
             name_flags &= ~TSK_FS_DIR_WALK_FLAG_ALLOC;
@@ -316,8 +320,6 @@ process(int argc, char **argv)
                 TZSET();
             }
             break;
-        case _TSK_T('c'):
-            tsk_icat = 1;
         }
     }
 
