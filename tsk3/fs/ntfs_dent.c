@@ -303,6 +303,9 @@ ntfs_proc_idxentry(NTFS_INFO * a_ntfs, TSK_FS_DIR * a_fs_dir,
     TSK_FS_NAME *fs_name;
     TSK_FS_INFO *fs = (TSK_FS_INFO *) & a_ntfs->fs_info;
 
+    if (a_is_del == 1) {
+        return 0;
+    }
     if ((fs_name = tsk_fs_name_alloc(NTFS_MAXNAMLEN_UTF8, 0)) == NULL) {
         return TSK_ERR;
     }
@@ -330,7 +333,7 @@ ntfs_proc_idxentry(NTFS_INFO * a_ntfs, TSK_FS_DIR * a_fs_dir,
 
     /* cycle through the index entries, based on provided size */
     while (((uintptr_t) & (a_idxe->stream) + sizeof(ntfs_attr_fname)) <
-        endaddr) {
+        endaddr_alloc) {
 
         ntfs_attr_fname *fname = (ntfs_attr_fname *) & a_idxe->stream;
 
