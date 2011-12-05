@@ -33,6 +33,8 @@ static uint8_t tsk_fs_fls2(TSK_FS_INFO * fs, TSK_FS_FLS_FLAG_ENUM lclflags,
 static uint8_t tsk_fs_icat2(TSK_FS_INFO * fs, TSK_INUM_T inum,
     TSK_FS_ATTR_TYPE_ENUM type, uint8_t type_used,
     uint16_t id, uint8_t id_used, TSK_FS_FILE_WALK_FLAG_ENUM flags);
+static uint8_t
+tsk_fs_icat3(TSK_FS_INFO * fs, TSK_FS_FILE_WALK_FLAG_ENUM flags);
 
 void
 usage()
@@ -192,7 +194,7 @@ process(int argc, char **argv)
     static TSK_TCHAR *macpre = NULL;
     unsigned int ssize = 0;
     TSK_TCHAR *cp;
-    int tsk_icat = 0;
+    int tsk_icat = 0, icat_reg = 0;
     uint16_t id = 0;
     uint8_t id_used, type_used = 0;
     int retval;
@@ -204,7 +206,7 @@ process(int argc, char **argv)
 
     OPTIND = 0;
     while ((ch =
-            GETOPT(argc, argv, _TSK_T("ab:cdDf:Fi:I:m:lo:O:prs:uvVz:"))) > 0) {
+            GETOPT(argc, argv, _TSK_T("ab:cdDf:Fi:I:m:lo:O:prRs:uvVz:"))) > 0) {
         switch (ch) {
         case _TSK_T('?'):
         default:
@@ -294,6 +296,9 @@ process(int argc, char **argv)
             break;
         case _TSK_T('r'):
             name_flags |= TSK_FS_DIR_WALK_FLAG_RECURSE;
+            break;
+        case _TSK_T('R'):
+            icat_reg = 1;
             break;
         case _TSK_T('s'):
             sec_skew = TATOI(OPTARG);
@@ -395,6 +400,8 @@ process(int argc, char **argv)
     if (tsk_icat) {
         retval = tsk_fs_icat2(g_fs, inode, type, type_used, id, id_used,
         (TSK_FS_FILE_WALK_FLAG_ENUM) 0);
+    } else if (icat_reg) {
+        retval = tsk_fs_icat3(g_fs, (TSK_FS_FILE_WALK_FLAG_ENUM)0);
     } else {
         retval = tsk_fs_fls2(g_fs, (TSK_FS_FLS_FLAG_ENUM) fls_flags, inode,
             (TSK_FS_DIR_WALK_FLAG_ENUM) name_flags, macpre, sec_skew);
@@ -557,6 +564,38 @@ tsk_fs_icat2(TSK_FS_INFO * fs, TSK_INUM_T inum,
         }
     }
 
+
+    tsk_fs_file_close(fs_file);
+
+    return 0;
+}
+
+/* Return 1 on error and 0 on success */
+static uint8_t
+tsk_fs_icat3(TSK_FS_INFO * fs, TSK_FS_FILE_WALK_FLAG_ENUM flags)
+{
+    TSK_FS_FILE *fs_file;
+
+#ifdef TSK_WIN32
+    if (-1 == _setmode(_fileno(stdout), _O_BINARY)) {
+        tsk_error_reset();
+        tsk_errno = TSK_ERR_FS_WRITE;
+        snprintf(tsk_errstr, TSK_ERRSTR_L,
+            "icat_lib: error setting stdout to binary: %s",
+            strerror(errno));
+        return 1;
+    }
+#endif
+
+    fs_file = tsk_fs_file_open(fs, NULL, "/winnt/system32/config/software");
+    if (!fs_file) {
+        return 1;
+    }
+
+    if (tsk_fs_file_walk(fs_file, flags, icat_action, NULL)) {
+        tsk_fs_file_close(fs_file);
+        return 1;
+    }
 
     tsk_fs_file_close(fs_file);
 
