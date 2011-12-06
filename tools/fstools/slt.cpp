@@ -592,11 +592,13 @@ tsk_fs_icat3(TSK_FS_INFO * fs, TSK_FS_FILE_WALK_FLAG_ENUM flags)
         return 1;
     }
 
+    fprintf(g_ofile, "opening file\n");
+/*
     if (tsk_fs_file_walk(fs_file, flags, icat_action, NULL)) {
         tsk_fs_file_close(fs_file);
         return 1;
     }
-
+*/
     tsk_fs_file_close(fs_file);
 
     return 0;

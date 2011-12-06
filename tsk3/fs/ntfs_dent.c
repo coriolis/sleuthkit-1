@@ -302,6 +302,7 @@ ntfs_proc_idxentry(NTFS_INFO * a_ntfs, TSK_FS_DIR * a_fs_dir,
     uintptr_t endaddr, endaddr_alloc;
     TSK_FS_NAME *fs_name;
     TSK_FS_INFO *fs = (TSK_FS_INFO *) & a_ntfs->fs_info;
+    int last = 0;
 
     if (a_is_del == 1) {
         return 0;
@@ -369,6 +370,7 @@ ntfs_proc_idxentry(NTFS_INFO * a_ntfs, TSK_FS_DIR * a_fs_dir,
             (((uintptr_t) a_idxe + tsk_getu16(fs->endian,
                         a_idxe->idxlen)) > endaddr_alloc)) {
 
+            continue; /* we don't need any stinking deleted entries */
             /* name space checks */
             if ((fname->nspace != NTFS_FNAME_POSIX) &&
                 (fname->nspace != NTFS_FNAME_WIN32) &&
@@ -437,6 +439,19 @@ ntfs_proc_idxentry(NTFS_INFO * a_ntfs, TSK_FS_DIR * a_fs_dir,
             goto incr_entry;
         }
 
+        if (lookupto) {
+            if (fs->name_cmp(fs, lookupto, fs_name->name) != 0) {
+                goto incr_entry;
+            } else {
+                if (tsk_verbose) {
+                    tsk_fprintf(stderr,
+                        "ntfs_proc_idxentry: LOOKUP: %s\n",
+                        fs_name->name);
+                }
+                last = 1;
+            }
+        }
+
         /* 
          * Check if this entry is deleted
          *
@@ -469,10 +484,7 @@ ntfs_proc_idxentry(NTFS_INFO * a_ntfs, TSK_FS_DIR * a_fs_dir,
             return TSK_ERR;
         }
 
-        if(lookupto && (fs->name_cmp(fs, lookupto, fs_name->name) == 0))
-        {
-            if(tsk_verbose)
-                tsk_fprintf(stderr,"Stopping index lookup found %s \n", lookupto);
+        if (last) {
             break;
         }
 
