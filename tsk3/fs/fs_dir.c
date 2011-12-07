@@ -242,6 +242,35 @@ tsk_fs_dir_open_meta(TSK_FS_INFO * a_fs, TSK_INUM_T a_addr)
 
 
 /** \ingroup fslib
+* Open a directory (using its metadata addr) untill given file is found
+* @param a_fs File system to analyze
+* @param a_addr Metadata address of the directory to open
+* @param next Iterate index untill this name is found
+* @returns NULL on error
+*/
+TSK_FS_DIR *
+tsk_fs_dir_open_meta_partial(TSK_FS_INFO * a_fs, TSK_INUM_T a_addr, char *next)
+{
+    TSK_FS_DIR *fs_dir = NULL;
+    TSK_RETVAL_ENUM retval;
+
+    if ((a_fs == NULL) || (a_fs->tag != TSK_FS_INFO_TAG)
+        || (a_fs->dir_open_meta == NULL)) {
+        tsk_errno = TSK_ERR_FS_ARG;
+        snprintf(tsk_errstr, TSK_ERRSTR_L,
+            "tsk_fs_dir_open_meta: called with NULL or unallocated structures");
+        return NULL;
+    }
+
+    retval = a_fs->dir_open_meta_partial(a_fs, &fs_dir, a_addr, next);
+    if (retval != TSK_OK)
+        return NULL;
+
+    return fs_dir;
+}
+
+
+/** \ingroup fslib
 * Open a directory (using its path) so that each of the files in it can be accessed.
 * @param a_fs File system to analyze
 * @param a_dir Path of the directory to open

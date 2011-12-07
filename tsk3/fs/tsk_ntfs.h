@@ -651,6 +651,9 @@ extern "C" {
     extern TSK_RETVAL_ENUM
         ntfs_dir_open_meta(TSK_FS_INFO * a_fs, TSK_FS_DIR ** a_fs_dir,
         TSK_INUM_T a_addr);
+    extern TSK_RETVAL_ENUM
+        ntfs_dir_open_meta_partial(TSK_FS_INFO * a_fs, TSK_FS_DIR ** a_fs_dir,
+        TSK_INUM_T a_addr, char *next);
 
     extern void ntfs_orphan_map_free(NTFS_INFO * a_ntfs);
 

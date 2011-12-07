@@ -602,6 +602,8 @@ extern "C" {
 
     extern TSK_FS_DIR *tsk_fs_dir_open_meta(TSK_FS_INFO * a_fs,
         TSK_INUM_T a_addr);
+    extern TSK_FS_DIR *tsk_fs_dir_open_meta_partial(TSK_FS_INFO * a_fs,
+        TSK_INUM_T a_addr, char *next);
     extern TSK_FS_DIR *tsk_fs_dir_open(TSK_FS_INFO * a_fs,
         const char *a_dir);
     extern uint8_t tsk_fs_dir_walk(TSK_FS_INFO * a_fs, TSK_INUM_T a_inode,
@@ -885,6 +887,7 @@ extern "C" {
             TSK_DADDR_T numblock, int32_t sec_skew);
 
          TSK_RETVAL_ENUM(*dir_open_meta) (TSK_FS_INFO * fs, TSK_FS_DIR ** a_fs_dir, TSK_INUM_T inode);  ///< \internal Call tsk_fs_dir_open_meta() instead. 
+         TSK_RETVAL_ENUM(*dir_open_meta_partial) (TSK_FS_INFO * fs, TSK_FS_DIR ** a_fs_dir, TSK_INUM_T inode, char *next);  ///< \internal Call tsk_fs_dir_open_meta() instead. 
 
          uint8_t(*jopen) (TSK_FS_INFO *, TSK_INUM_T);   ///< \internal
 

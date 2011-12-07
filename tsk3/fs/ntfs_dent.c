@@ -297,7 +297,7 @@ is_time(uint64_t t)
 static TSK_RETVAL_ENUM
 ntfs_proc_idxentry(NTFS_INFO * a_ntfs, TSK_FS_DIR * a_fs_dir,
     uint8_t a_is_del, ntfs_idxentry * a_idxe, uint32_t a_idxe_len,
-    uint32_t a_used_len)
+    uint32_t a_used_len, char *lookupto)
 {
     uintptr_t endaddr, endaddr_alloc;
     TSK_FS_NAME *fs_name;
@@ -469,6 +469,13 @@ ntfs_proc_idxentry(NTFS_INFO * a_ntfs, TSK_FS_DIR * a_fs_dir,
             return TSK_ERR;
         }
 
+        if(lookupto && (fs->name_cmp(fs, lookupto, fs_name->name) == 0))
+        {
+            if(tsk_verbose)
+                tsk_fprintf(stderr,"Stopping index lookup found %s \n", lookupto);
+            break;
+        }
+
       incr_entry:
 
         /* the theory here is that deleted entries have strlen == 0 and
@@ -601,8 +608,8 @@ ntfs_fix_idxrec(NTFS_INFO * ntfs, ntfs_idxrec * idxrec, uint32_t len)
 * @returns error, corruption, ok etc. 
 */
 TSK_RETVAL_ENUM
-ntfs_dir_open_meta(TSK_FS_INFO * a_fs, TSK_FS_DIR ** a_fs_dir,
-    TSK_INUM_T a_addr)
+ntfs_dir_open_meta_inner(TSK_FS_INFO * a_fs, TSK_FS_DIR ** a_fs_dir,
+    TSK_INUM_T a_addr, char *lookupto)
 {
     NTFS_INFO *ntfs = (NTFS_INFO *) a_fs;
     TSK_FS_DIR *fs_dir;
@@ -813,7 +820,7 @@ ntfs_dir_open_meta(TSK_FS_INFO * a_fs, TSK_FS_DIR ** a_fs_dir,
         tsk_getu32(a_fs->endian, idxelist->bufend_off) -
         tsk_getu32(a_fs->endian, idxelist->begin_off),
         tsk_getu32(a_fs->endian, idxelist->seqend_off) -
-        tsk_getu32(a_fs->endian, idxelist->begin_off));
+        tsk_getu32(a_fs->endian, idxelist->begin_off), lookupto);
 
     // stop if we get an error, continue if we got corruption
     if (retval_tmp == TSK_ERR) {
@@ -985,7 +992,7 @@ ntfs_dir_open_meta(TSK_FS_INFO * a_fs, TSK_FS_DIR ** a_fs_dir,
                     flags & TSK_FS_META_FLAG_UNALLOC) ? 1 : 0, idxe,
                 list_len, tsk_getu32(a_fs->endian,
                     idxelist->seqend_off) - tsk_getu32(a_fs->endian,
-                    idxelist->begin_off));
+                    idxelist->begin_off), lookupto);
             // stop if we get an error, record if we get corruption
             if (retval_tmp == TSK_ERR) {
                 free(idxalloc);
@@ -1050,7 +1057,7 @@ ntfs_dir_open_meta(TSK_FS_INFO * a_fs, TSK_FS_DIR ** a_fs_dir,
                     flags & TSK_FS_META_FLAG_UNALLOC) ? 1 : 0, idxe,
                 list_len, tsk_getu32(a_fs->endian,
                     idxelist->seqend_off) - tsk_getu32(a_fs->endian,
-                    idxelist->begin_off));
+                    idxelist->begin_off), lookupto);
             // stop if we get an error, record if we get corruption
             if (retval_tmp == TSK_ERR) {
                 free(idxalloc);
@@ -1135,6 +1142,21 @@ ntfs_dir_open_meta(TSK_FS_INFO * a_fs, TSK_FS_DIR ** a_fs_dir,
 }
 
 
+//calls inner function will null next lookup param
+TSK_RETVAL_ENUM
+ntfs_dir_open_meta(TSK_FS_INFO * a_fs, TSK_FS_DIR ** a_fs_dir,
+    TSK_INUM_T a_addr)
+{
+    return ntfs_dir_open_meta_inner(a_fs, a_fs_dir, a_addr, NULL);
+}
+
+//calls inner function will next lookup param
+TSK_RETVAL_ENUM
+ntfs_dir_open_meta_partial(TSK_FS_INFO * a_fs, TSK_FS_DIR ** a_fs_dir,
+    TSK_INUM_T a_addr, char *next)
+{
+    return ntfs_dir_open_meta_inner(a_fs, a_fs_dir, a_addr, next);
+}
 
 /****************************************************************************
  * FIND_FILE ROUTINES

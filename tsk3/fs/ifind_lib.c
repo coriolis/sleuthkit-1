@@ -176,6 +176,7 @@ tsk_fs_path2inum(TSK_FS_INFO * a_fs, const char *a_path,
     TSK_INUM_T next_meta;
     uint8_t is_done;
     *a_result = 0;
+    char *mypath = NULL, *next = NULL, *mcurr = NULL;
 
     // copy path to a buffer that we can modify
     clen = strlen(a_path) + 1;
@@ -183,6 +184,11 @@ tsk_fs_path2inum(TSK_FS_INFO * a_fs, const char *a_path,
         return -1;
     }
     strncpy(cpath, a_path, clen);
+
+    if ((mypath = (char *) tsk_malloc(clen)) == NULL) {
+        return -1;
+    }
+    strncpy(mypath, a_path, clen);
 
     // Get the first part of the directory path. 
     cur_dir = (char *) strtok_r(cpath, "/", &strtok_last);
@@ -205,6 +211,8 @@ tsk_fs_path2inum(TSK_FS_INFO * a_fs, const char *a_path,
         }
         return 0;
     }
+
+    next = (char *) strtok_r(mypath, "/", &mcurr);
 
     /* If this is NTFS, seperate out the attribute of the current directory */
     if (TSK_FS_TYPE_ISNTFS(a_fs->ftype)
@@ -230,10 +238,11 @@ tsk_fs_path2inum(TSK_FS_INFO * a_fs, const char *a_path,
         TSK_FS_DIR *fs_dir = NULL;
 
         // open the next directory in the recursion
-        if ((fs_dir = tsk_fs_dir_open_meta(a_fs, next_meta)) == NULL) {
+        if ((fs_dir = tsk_fs_dir_open_meta_partial(a_fs, next_meta, next)) == NULL) {
             free(cpath);
             return -1;
         }
+        next = (char *) strtok_r(NULL, "/", &mcurr);
 
         /* Verify this is indeed a directory.  We had one reported
          * problem where a file was a disk image and opening it as
@@ -407,6 +416,7 @@ tsk_fs_path2inum(TSK_FS_INFO * a_fs, const char *a_path,
     }
 
     free(cpath);
+    free(mypath);
     return 1;
 }
 

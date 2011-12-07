@@ -4725,6 +4725,7 @@ ntfs_open(TSK_IMG_INFO * img_info, TSK_OFF_T offset,
 
     fs->file_add_meta = ntfs_inode_lookup;
     fs->dir_open_meta = ntfs_dir_open_meta;
+    fs->dir_open_meta_partial = ntfs_dir_open_meta_partial;
     fs->fsstat = ntfs_fsstat;
     fs->fscheck = ntfs_fscheck;
     fs->istat = ntfs_istat;
