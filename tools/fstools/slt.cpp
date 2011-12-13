@@ -36,6 +36,7 @@ static uint8_t tsk_fs_icat2(TSK_FS_INFO * fs, TSK_INUM_T inum,
 static uint8_t
 tsk_fs_icat3(TSK_FS_INFO * fs, TSK_FS_FILE_WALK_FLAG_ENUM flags);
 
+static uint8_t tsk_get_os_info(TSK_FS_INFO * fs);
 void
 usage()
 {
@@ -194,7 +195,7 @@ process(int argc, char **argv)
     static TSK_TCHAR *macpre = NULL;
     unsigned int ssize = 0;
     TSK_TCHAR *cp;
-    int tsk_icat = 0, icat_reg = 0;
+    int tsk_icat = 0, icat_reg = 0, slt_osinfo=0;
     uint16_t id = 0;
     uint8_t id_used, type_used = 0;
     int retval;
@@ -206,7 +207,7 @@ process(int argc, char **argv)
 
     OPTIND = 0;
     while ((ch =
-            GETOPT(argc, argv, _TSK_T("ab:cdDf:Fi:I:m:lo:O:prRs:uvVz:"))) > 0) {
+            GETOPT(argc, argv, _TSK_T("ab:cdDf:Fi:I:m:lo:O:prRs:tuvVz:"))) > 0) {
         switch (ch) {
         case _TSK_T('?'):
         default:
@@ -302,6 +303,9 @@ process(int argc, char **argv)
             break;
         case _TSK_T('s'):
             sec_skew = TATOI(OPTARG);
+            break;
+        case _TSK_T('t'):
+            slt_osinfo = 1;
             break;
         case _TSK_T('u'):
             name_flags &= ~TSK_FS_DIR_WALK_FLAG_UNALLOC;
@@ -402,6 +406,8 @@ process(int argc, char **argv)
         (TSK_FS_FILE_WALK_FLAG_ENUM) 0);
     } else if (icat_reg) {
         retval = tsk_fs_icat3(g_fs, (TSK_FS_FILE_WALK_FLAG_ENUM)0);
+    } else if (slt_osinfo) {
+        retval = tsk_get_os_info(g_fs);
     } else {
         retval = tsk_fs_fls2(g_fs, (TSK_FS_FLS_FLAG_ENUM) fls_flags, inode,
             (TSK_FS_DIR_WALK_FLAG_ENUM) name_flags, macpre, sec_skew);
@@ -587,18 +593,16 @@ tsk_fs_icat3(TSK_FS_INFO * fs, TSK_FS_FILE_WALK_FLAG_ENUM flags)
     }
 #endif
 
-    fs_file = tsk_fs_file_open(fs, NULL, "/winnt/system32/config/software");
+    fs_file = tsk_fs_file_open(fs, NULL, "/Windows/system32/config/software");
     if (!fs_file) {
         return 1;
     }
 
     fprintf(g_ofile, "opening file\n");
-/*
     if (tsk_fs_file_walk(fs_file, flags, icat_action, NULL)) {
         tsk_fs_file_close(fs_file);
         return 1;
     }
-*/
     tsk_fs_file_close(fs_file);
 
     return 0;
@@ -804,3 +808,128 @@ tsk_fs_fls2(TSK_FS_INFO * fs, TSK_FS_FLS_FLAG_ENUM lclflags,
     return tsk_fs_dir_walk(fs, inode, flags, print_dent_act, &data);
 #endif
 }
+
+struct file_handle {
+    TSK_FS_INFO * fs;
+    void *handle;
+    uint32_t coff;
+};
+
+#include <dlfcn.h>
+
+#define OS_INFO_LIB_NAME    "libosinfo.so"
+#define OS_INFO_FUN_NAME    "osi_get_os_details"
+struct file_handle regfile;
+const char *regfilename = "/Windows/system32/config/software";
+typedef int (* osi_get_os_details_t)(void *open, void *read, void *lseek, char ***info);
+static void *oslib = NULL;
+static osi_get_os_details_t osi_get_os_details = NULL;
+static int dumpfd = 0;
+int clbk_open(char *fname, int mode)
+{
+    void *fs_file;
+    fprintf(g_ofile, "Opening registry file %s\n", regfilename);
+    fs_file = tsk_fs_file_open(regfile.fs, NULL, regfilename);
+    if (!fs_file) {
+        fprintf(g_ofile, "Failed\n");
+        return 1;
+    }
+
+    //dumpfd = open("/tmp/dump2", O_CREAT|O_WRONLY|O_TRUNC, 0777);
+    regfile.handle = fs_file;
+    regfile.coff = 0;
+
+    return 10;
+}
+
+int clbk_read(int fd, char *buf, size_t size)
+{
+    int ret = 0;
+    ret = tsk_fs_file_read((TSK_FS_FILE *)regfile.handle, regfile.coff, buf, size, 
+                            (TSK_FS_FILE_READ_FLAG_ENUM)0);
+
+    if(dumpfd) {
+        int x =0;
+        x =write(dumpfd, buf, ret);
+    }
+    //fprintf(g_ofile, "Read %d asked %ld \n", ret, size);
+    return ret;
+}
+
+int clbk_seek(int fd, off_t off, int wh)
+{
+    int ret = 0;
+
+    if(wh == SEEK_SET)
+        regfile.coff = off;
+    else if (wh == SEEK_CUR)
+        regfile.coff += off;
+
+    //fprintf(g_ofile, "Seek off %d wh %d \n", (int) off, wh);
+    return ret;
+}
+
+static uint8_t tsk_get_os_info(TSK_FS_INFO * fs)
+{
+    TSK_FS_FILE *fs_file;
+    char **info = NULL;
+    int i=0;
+    char *error = NULL;
+
+#ifdef TSK_WIN32
+    if (-1 == _setmode(_fileno(stdout), _O_BINARY)) {
+        tsk_error_reset();
+        tsk_errno = TSK_ERR_FS_WRITE;
+        snprintf(tsk_errstr, TSK_ERRSTR_L,
+            "icat_lib: error setting stdout to binary: %s",
+            strerror(errno));
+        return 1;
+    }
+#endif
+    memset(&regfile, 0, sizeof(regfile));
+
+    oslib = dlopen(OS_INFO_LIB_NAME, RTLD_LAZY);
+    if (!oslib) {
+        fprintf(stderr, "Failed to load library %s due to %s",
+                OS_INFO_LIB_NAME, dlerror());
+        return 1;
+    }
+
+    osi_get_os_details = (osi_get_os_details_t)dlsym(oslib, OS_INFO_FUN_NAME);
+    if ((error = dlerror()) != NULL) {
+        fprintf(g_ofile, "Failed to load symbol %s from library error %s \n",
+                OS_INFO_FUN_NAME, error);
+        return 1;
+    }
+
+    regfile.fs = fs;
+    fprintf(g_ofile, "Reading os info from registry\n");
+    
+    i = osi_get_os_details((void *)clbk_open,(void *) clbk_read, (void *)clbk_seek, &info);
+
+    if(dumpfd) close(dumpfd);
+    i=0;
+    if(!info || info[0]==NULL) printf("No info found \n");
+    while(info && info[i])
+    {
+        fprintf(g_ofile, "\t%s: %s\n", info[i], info[i+1]);
+        free(info[i]);
+        free(info[i+1]);
+        i+=2;
+    }
+
+    free(info);
+
+    
+/*
+    if (tsk_fs_file_walk(fs_file, flags, icat_action, NULL)) {
+        tsk_fs_file_close(fs_file);
+        return 1;
+    }
+*/
+    tsk_fs_file_close(fs_file);
+
+    return 0;
+}
+
+
