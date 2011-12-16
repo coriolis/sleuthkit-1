@@ -825,6 +825,9 @@ typedef int (* osi_get_os_details_t)(void *open, void *read, void *lseek, char *
 static void *oslib = NULL;
 static osi_get_os_details_t osi_get_os_details = NULL;
 static int dumpfd = 0;
+static int readcount = 0;
+static int readoffcount[33*1024*1024] = { 0 };
+static int readsizecount[33*1024*1024] = { 0 };
 int clbk_open(char *fname, int mode)
 {
     void *fs_file;
@@ -842,12 +845,19 @@ int clbk_open(char *fname, int mode)
     return 10;
 }
 
-int clbk_read(int fd, char *buf, size_t size)
+int clbk_read(int fd, char *buf, size_t size, size_t off)
 {
     int ret = 0;
+    regfile.coff = off;
     ret = tsk_fs_file_read((TSK_FS_FILE *)regfile.handle, regfile.coff, buf, size, 
                             (TSK_FS_FILE_READ_FLAG_ENUM)0);
 
+    if(regfile.coff < (sizeof(readoffcount)/sizeof(readoffcount[0]))) {
+        readoffcount[regfile.coff] += 1;
+        readsizecount[regfile.coff] += ret;
+    }
+        
+    readcount += ret;
     if(dumpfd) {
         int x =0;
         x =write(dumpfd, buf, ret);
@@ -855,6 +865,15 @@ int clbk_read(int fd, char *buf, size_t size)
     //fprintf(g_ofile, "Read %d asked %ld \n", ret, size);
     return ret;
 }
+size_t clbk_get_size(int fd)
+{
+    int ret = 0;
+    TSK_FS_FILE *fl = (TSK_FS_FILE *)regfile.handle;
+    fprintf(g_ofile, "File size : %d\n", fl->meta->size);
+
+    return fl->meta->size;
+}
+
 
 int clbk_seek(int fd, off_t off, int wh)
 {
@@ -905,7 +924,9 @@ static uint8_t tsk_get_os_info(TSK_FS_INFO * fs)
     regfile.fs = fs;
     fprintf(g_ofile, "Reading os info from registry\n");
     
-    i = osi_get_os_details((void *)clbk_open,(void *) clbk_read, (void *)clbk_seek, &info);
+    i = osi_get_os_details((void *)clbk_open,(void *) clbk_read, (void *)clbk_get_size, &info);
+
+    printf("Total read %d \n", readcount);
 
     if(dumpfd) close(dumpfd);
     i=0;
@@ -918,6 +939,11 @@ static uint8_t tsk_get_os_info(TSK_FS_INFO * fs)
         i+=2;
     }
 
+    for (i=0;i<(sizeof(readoffcount)/sizeof(readoffcount[0]));i++)
+    {
+        if(readoffcount[i])
+            printf("count %d off %d size %d \n", readoffcount[i], i, readsizecount[i]);
+    }
     free(info);
 
     
