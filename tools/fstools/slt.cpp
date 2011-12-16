@@ -826,8 +826,9 @@ static void *oslib = NULL;
 static osi_get_os_details_t osi_get_os_details = NULL;
 static int dumpfd = 0;
 static int readcount = 0;
-static int readoffcount[33*1024*1024] = { 0 };
-static int readsizecount[33*1024*1024] = { 0 };
+#define BUF_33MB    (33*1024*1024)
+static int readoffcount[1] = { 0 };
+static int readsizecount[1] = { 0 };
 int clbk_open(char *fname, int mode)
 {
     void *fs_file;
