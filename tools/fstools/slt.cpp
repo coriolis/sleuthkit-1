@@ -820,7 +820,10 @@ struct file_handle {
 #define OS_INFO_LIB_NAME    "libosinfo.so"
 #define OS_INFO_FUN_NAME    "osi_get_os_details"
 struct file_handle regfile;
-const char *regfilename = "/Windows/system32/config/software";
+const char *regfilenames[] = { "/Windows/system32/config/software",
+                                "/winnt/system32/config/software",
+                                NULL
+                            };
 typedef int (* osi_get_os_details_t)(void *open, void *read, void *lseek, char ***info);
 static void *oslib = NULL;
 static osi_get_os_details_t osi_get_os_details = NULL;
@@ -831,11 +834,20 @@ static int readoffcount[1] = { 0 };
 static int readsizecount[1] = { 0 };
 int clbk_open(char *fname, int mode)
 {
-    void *fs_file;
-    fprintf(g_ofile, "Opening registry file %s\n", regfilename);
-    fs_file = tsk_fs_file_open(regfile.fs, NULL, regfilename);
+    void *fs_file = NULL;
+    int i=0;
+    while(regfilenames[i]) {
+        fprintf(g_ofile, "Opening registry file %s\n", regfilenames[i]);
+        fs_file = tsk_fs_file_open(regfile.fs, NULL, regfilenames[i]);
+        if (!fs_file) {
+            fprintf(g_ofile, "Failed\n");
+        }
+        break;
+        i++;
+    }
+    
     if (!fs_file) {
-        fprintf(g_ofile, "Failed\n");
+        fprintf(g_ofile, "No registry file found\n");
         return 1;
     }
 
@@ -868,9 +880,8 @@ int clbk_read(int fd, char *buf, size_t size, size_t off)
 }
 size_t clbk_get_size(int fd)
 {
-    int ret = 0;
     TSK_FS_FILE *fl = (TSK_FS_FILE *)regfile.handle;
-    fprintf(g_ofile, "File size : %d\n", fl->meta->size);
+    fprintf(g_ofile, "File size : %u\n", (unsigned int)fl->meta->size);
 
     return fl->meta->size;
 }
@@ -891,7 +902,6 @@ int clbk_seek(int fd, off_t off, int wh)
 
 static uint8_t tsk_get_os_info(TSK_FS_INFO * fs)
 {
-    TSK_FS_FILE *fs_file;
     char **info = NULL;
     int i=0;
     char *error = NULL;
@@ -954,7 +964,8 @@ static uint8_t tsk_get_os_info(TSK_FS_INFO * fs)
         return 1;
     }
 */
-    tsk_fs_file_close(fs_file);
+    if(regfile.handle)
+        tsk_fs_file_close((TSK_FS_FILE *)regfile.handle);
 
     return 0;
 }
