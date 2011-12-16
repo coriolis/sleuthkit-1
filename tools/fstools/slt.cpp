@@ -821,7 +821,7 @@ struct file_handle {
 #define OS_INFO_FUN_NAME    "osi_get_os_details"
 struct file_handle regfile;
 const char *regfilenames[] = { "/Windows/system32/config/software",
-                                "/winnt/system32/config/software",
+                                "/Winnt/system32/config/software",
                                 NULL
                             };
 typedef int (* osi_get_os_details_t)(void *open, void *read, void *lseek, char ***info);
@@ -842,13 +842,14 @@ int clbk_open(char *fname, int mode)
         if (!fs_file) {
             fprintf(g_ofile, "Failed\n");
         }
-        break;
+        else
+            break;
         i++;
     }
     
     if (!fs_file) {
         fprintf(g_ofile, "No registry file found\n");
-        return 1;
+        return -1;
     }
 
     //dumpfd = open("/tmp/dump2", O_CREAT|O_WRONLY|O_TRUNC, 0777);
