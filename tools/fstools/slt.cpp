@@ -901,19 +901,18 @@ int clbk_seek(int fd, off_t off, int wh)
     return ret;
 }
 
-void print_osinfo_json(char **info)
+void print_osinfo(char **info)
 {
     int i=0;
      
-    fprintf(g_ofile, "{\n");
+    //fprintf(g_ofile, "{\n");
     while(info && info[i])
     {
-        fprintf(g_ofile, "'%s':'%s',\n", info[i], info[i+1]);
+        fprintf(g_ofile, "%s|%s\n", info[i], info[i+1]);
         free(info[i]);
         free(info[i+1]);
         i+=2;
     }
-    fprintf(g_ofile, "}\n");
     fflush(g_ofile);
 
     return;
@@ -962,7 +961,7 @@ static uint8_t tsk_get_os_info(TSK_FS_INFO * fs)
     if(dumpfd) close(dumpfd);
     i=0;
     if(!info || info[0]==NULL) fprintf(stderr, "No info found \n");
-    print_osinfo_json(info);
+    print_osinfo(info);
     /*
     for (i=0;i<(sizeof(readoffcount)/sizeof(readoffcount[0]));i++)
     {
