@@ -837,7 +837,7 @@ int clbk_open(char *fname, int mode)
     void *fs_file = NULL;
     int i=0;
     while(regfilenames[i]) {
-        fprintf(g_ofile, "Opening registry file %s\n", regfilenames[i]);
+        fprintf(stderr, "Opening registry file %s\n", regfilenames[i]);
         fs_file = tsk_fs_file_open(regfile.fs, NULL, regfilenames[i]);
         if (!fs_file) {
             fprintf(g_ofile, "Failed\n");
@@ -848,7 +848,7 @@ int clbk_open(char *fname, int mode)
     }
     
     if (!fs_file) {
-        fprintf(g_ofile, "No registry file found\n");
+        fprintf(stderr, "No registry file found\n");
         return -1;
     }
 
@@ -882,7 +882,7 @@ int clbk_read(int fd, char *buf, size_t size, size_t off)
 size_t clbk_get_size(int fd)
 {
     TSK_FS_FILE *fl = (TSK_FS_FILE *)regfile.handle;
-    fprintf(g_ofile, "File size : %u\n", (unsigned int)fl->meta->size);
+    //fprintf(g_ofile, "File size : %u\n", (unsigned int)fl->meta->size);
 
     return fl->meta->size;
 }
@@ -900,6 +900,25 @@ int clbk_seek(int fd, off_t off, int wh)
     //fprintf(g_ofile, "Seek off %d wh %d \n", (int) off, wh);
     return ret;
 }
+
+void print_osinfo_json(char **info)
+{
+    int i=0;
+     
+    fprintf(g_ofile, "{\n");
+    while(info && info[i])
+    {
+        fprintf(g_ofile, "'%s':'%s',\n", info[i], info[i+1]);
+        free(info[i]);
+        free(info[i+1]);
+        i+=2;
+    }
+    fprintf(g_ofile, "}\n");
+    fflush(g_ofile);
+
+    return;
+}
+
 
 static uint8_t tsk_get_os_info(TSK_FS_INFO * fs)
 {
@@ -928,34 +947,29 @@ static uint8_t tsk_get_os_info(TSK_FS_INFO * fs)
 
     osi_get_os_details = (osi_get_os_details_t)dlsym(oslib, OS_INFO_FUN_NAME);
     if ((error = dlerror()) != NULL) {
-        fprintf(g_ofile, "Failed to load symbol %s from library error %s \n",
+        fprintf(stderr, "Failed to load symbol %s from library error %s \n",
                 OS_INFO_FUN_NAME, error);
         return 1;
     }
 
     regfile.fs = fs;
-    fprintf(g_ofile, "Reading os info from registry\n");
+    fprintf(stderr, "Reading os info from registry\n");
     
     i = osi_get_os_details((void *)clbk_open,(void *) clbk_read, (void *)clbk_get_size, &info);
 
-    printf("Total read %d \n", readcount);
+    //printf("Total read %d \n", readcount);
 
     if(dumpfd) close(dumpfd);
     i=0;
-    if(!info || info[0]==NULL) printf("No info found \n");
-    while(info && info[i])
-    {
-        fprintf(g_ofile, "\t%s: %s\n", info[i], info[i+1]);
-        free(info[i]);
-        free(info[i+1]);
-        i+=2;
-    }
-
+    if(!info || info[0]==NULL) fprintf(stderr, "No info found \n");
+    print_osinfo_json(info);
+    /*
     for (i=0;i<(sizeof(readoffcount)/sizeof(readoffcount[0]));i++)
     {
         if(readoffcount[i])
             printf("count %d off %d size %d \n", readoffcount[i], i, readsizecount[i]);
     }
+    */
     free(info);
 
     
