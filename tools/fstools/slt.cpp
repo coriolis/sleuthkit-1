@@ -824,7 +824,7 @@ const char *regfilenames[] = { "/Windows/system32/config/software",
                                 "/Winnt/system32/config/software",
                                 NULL
                             };
-typedef int (* osi_get_os_details_t)(void *open, void *read, void *lseek, char ***info);
+typedef int (* osi_get_os_details_t)(const char *os, void *open, void *cl, void *read, void *lseek, char ***info);
 static void *oslib = NULL;
 static osi_get_os_details_t osi_get_os_details = NULL;
 static int dumpfd = 0;
@@ -836,19 +836,28 @@ int clbk_open(char *fname, int mode)
 {
     void *fs_file = NULL;
     int i=0;
-    while(regfilenames[i]) {
-        fprintf(stderr, "Opening registry file %s\n", regfilenames[i]);
-        fs_file = tsk_fs_file_open(regfile.fs, NULL, regfilenames[i]);
-        if (!fs_file) {
-            fprintf(g_ofile, "Failed\n");
+    TSK_FS_INFO *fs = regfile.fs;
+    if(fs->ftype & TSK_FS_TYPE_NTFS) {
+        while(regfilenames[i]) {
+            fprintf(stderr, "Opening registry file %s\n", regfilenames[i]);
+            fs_file = tsk_fs_file_open(regfile.fs, NULL, regfilenames[i]);
+            if (!fs_file) {
+                fprintf(g_ofile, "Failed\n");
+            }
+            else
+                break;
+            i++;
         }
-        else
-            break;
-        i++;
+        if (!fs_file) {
+            fprintf(stderr, "No registry file found\n");
+            return -1;
+        }
     }
+    else
+        fs_file = tsk_fs_file_open(regfile.fs, NULL, fname);
     
     if (!fs_file) {
-        fprintf(stderr, "No registry file found\n");
+        fprintf(stderr, "file not found %s\n", fname);
         return -1;
     }
 
@@ -857,6 +866,16 @@ int clbk_open(char *fname, int mode)
     regfile.coff = 0;
 
     return 10;
+}
+
+int clbk_close(int fd)
+{
+
+    if(regfile.handle)
+        tsk_fs_file_close((TSK_FS_FILE*)regfile.handle);
+    regfile.handle = NULL;
+    
+    return 0;
 }
 
 int clbk_read(int fd, char *buf, size_t size, size_t off)
@@ -952,9 +971,11 @@ static uint8_t tsk_get_os_info(TSK_FS_INFO * fs)
     }
 
     regfile.fs = fs;
-    fprintf(stderr, "Reading os info from registry\n");
     
-    i = osi_get_os_details((void *)clbk_open,(void *) clbk_read, (void *)clbk_get_size, &info);
+    if(fs->ftype == TSK_FS_TYPE_NTFS)
+        i = osi_get_os_details("windows", (void *)clbk_open, (void *)clbk_close, (void *) clbk_read, (void *)clbk_get_size, &info);
+    else if(fs->ftype & TSK_FS_TYPE_EXT3 || fs->ftype & TSK_FS_TYPE_EXT2)
+        i = osi_get_os_details("linux", (void *)clbk_open, (void *)clbk_close, (void *) clbk_read, (void *)clbk_get_size, &info);
 
     //printf("Total read %d \n", readcount);
 
