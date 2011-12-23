@@ -18,7 +18,7 @@ ils_SOURCES = ils.cpp
 istat_SOURCES = istat.cpp
 jcat_SOURCES = jcat.cpp
 jls_SOURCES = jls.cpp
-slt_SOURCES = slt.cpp
+slt_SOURCES = slt.cpp slt-lvm.cpp
 
 indent:
 	indent *.cpp 
