@@ -3,8 +3,7 @@
 #ifndef _GRUB_TYPES_H_
 #define _GRUB_TYPES_H_
 
-#include "base/tsk_base.h"
-#include "base/tsk_os.h"
+#include "tsk_vs_i.h"
 #include "tsk_incs.h"
 
 #define grub_disk_t     void *

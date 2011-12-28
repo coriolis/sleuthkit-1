@@ -22,16 +22,18 @@
 #include <ctype.h>
 #include <stdio.h>
 
-#include "base/tsk_os.h"
-#include "base/tsk_base_i.h"
-#include "tsk_incs.h"
-#include "grub-types.h"
-#include "slt-lvm.h"
+#include "tsk_vs_i.h"
+#include "grub_types.h"
+#include "grub_lvm.h"
 
-extern int slt_disk_read(void *disk, TSK_DADDR_T sector, TSK_DADDR_T offset, 
-                size_t size, void *buf);
+grub_uint64_t get_sector_offset_bytes(grub_uint64_t s, grub_uint64_t of, grub_uint64_t sz)
+{
+        s+=of >>GRUB_DISK_SECTOR_BITS;
+        of = s * sz;
+        return of;
+}
 
-static struct grub_lvm_vg *vg_list;
+static struct grub_lvm_vg *vg_list = NULL;
 static int lv_count;
 
 /* Divide N by D, return the quotient, and store the remainder in *R.  */
@@ -224,6 +226,7 @@ static grub_err_t
 read_lv (struct grub_lvm_lv *lv, grub_disk_addr_t sector,
 	 grub_size_t size, char *buf);
 
+#if 0
 static grub_err_t
 read_node (const struct grub_lvm_node *node, grub_disk_addr_t sector,
 	   grub_size_t size, char *buf)
@@ -233,8 +236,8 @@ read_node (const struct grub_lvm_node *node, grub_disk_addr_t sector,
   if (node->pv)
     {
       if (node->pv->disk)
-	return (grub_err_t)slt_disk_read (node->pv->disk, sector + node->pv->start, 0,
-			       size << GRUB_DISK_SECTOR_BITS, buf);
+	return (grub_err_t)tsk_img_read(node->pv->disk, sector + node->pv->start, buf,
+			       size << GRUB_DISK_SECTOR_BITS);
       else
 	return (grub_err_t)grub_error (
 			   "physical volume %s not found", node->pv->name);
@@ -244,7 +247,7 @@ read_node (const struct grub_lvm_node *node, grub_disk_addr_t sector,
     return (grub_err_t)read_lv (node->lv, sector, size, buf);
   return (grub_err_t)grub_error ("unknown node '%s'", node->name);
 }
-
+#endif 
 grub_uint64_t
 grub_get_largest_volume_offset ()
 {
@@ -272,6 +275,27 @@ grub_get_largest_volume()
     return lv;
 
 }
+
+uint8_t grub_lvm_get_offsets(void *vs, int (*hook)(void *vs, grub_uint64_t offset, grub_uint64_t size))
+{
+
+    struct grub_lvm_vg *vg;
+    struct grub_lvm_lv *lv = NULL;
+    //iterate over lvs and find larget one
+    for (vg = vg_list; vg; vg = vg->next)
+    {
+      struct grub_lvm_lv *tlv;
+      if (vg->lvs) {
+        lv = vg->lvs;
+        for (tlv = vg->lvs; tlv; tlv = tlv->next)
+            if (tlv->visible && hook)
+                hook(vs, grub_get_lv_offset(tlv)+vg->start_offset, tlv->size);
+        }
+    }
+
+    return 0;
+}
+
 
 static grub_uint64_t
 grub_get_node_offset (const struct grub_lvm_node *node, grub_uint64_t offset)
@@ -382,6 +406,7 @@ grub_get_lv_offset (struct grub_lvm_lv *lv)
     }
       return ret_offset;
 }
+#if 0
 static grub_err_t
 read_lv (struct grub_lvm_lv *lv, grub_disk_addr_t sector,
 	 grub_size_t size, char *buf)
@@ -475,7 +500,8 @@ read_lv (struct grub_lvm_lv *lv, grub_disk_addr_t sector,
     }
   return (grub_err_t)grub_error ("unknown LVM segment");
 }
-
+#endif
+#if 0
 static grub_err_t
 grub_lvm_read (grub_disk_t disk, grub_disk_addr_t sector,
 		grub_size_t size, char *buf)
@@ -483,6 +509,7 @@ grub_lvm_read (grub_disk_t disk, grub_disk_addr_t sector,
   ///return read_lv (disk->data, sector, size, buf);
   return read_lv ((grub_lvm_lv*)disk, sector, size, buf);
 }
+#endif
 
 static grub_err_t
 grub_lvm_write (grub_disk_t disk __attribute ((unused)),
@@ -512,6 +539,7 @@ grub_lvm_scan_device (void *pdisk, grub_uint64_t start_off)
   unsigned int i, j, vgname_len;
   struct grub_lvm_vg *vg;
   struct grub_lvm_pv *pv;
+  TSK_VS_INFO * a_vs = NULL;
 
 #ifdef GRUB_UTIL
   grub_util_info ("scanning %s for LVM", name);
@@ -520,16 +548,18 @@ grub_lvm_scan_device (void *pdisk, grub_uint64_t start_off)
   disk = (grub_disk_t) pdisk;
   if (!disk)
     {
-      if (grub_errno == GRUB_ERR_OUT_OF_RANGE)
-	grub_errno = GRUB_ERR_NONE;
-      return 0;
+	    grub_errno = GRUB_ERR_NONE;
+        return 0;
     }
+    a_vs = (TSK_VS_INFO *) pdisk;
 
   /* Search for label. */
   for (i = 0; i < GRUB_LVM_LABEL_SCAN_SECTORS; i++)
     {
-      err = (grub_err_t)slt_disk_read (disk, i+start_off, 0, sizeof(buf), buf);
-      if (err)
+      err = (grub_err_t)tsk_img_read(a_vs->img_info, get_sector_offset_bytes(i+start_off, 
+                                        0, a_vs->img_info->sector_size), 
+                                    buf, sizeof(buf));
+      if (err < 0)
 	goto fail;
 
       if ((! grub_strncmp ((char *)lh->id, GRUB_LVM_LABEL_ID,
@@ -586,8 +616,10 @@ grub_lvm_scan_device (void *pdisk, grub_uint64_t start_off)
   if (! metadatabuf)
     goto fail;
 
-  err = (grub_err_t)slt_disk_read (disk, 0+start_off, mda_offset, mda_size, metadatabuf);
-  if (err)
+  err = (grub_err_t)tsk_img_read(a_vs->img_info, get_sector_offset_bytes(start_off, 
+                                mda_offset, a_vs->img_info->sector_size), 
+                            metadatabuf, mda_size);
+  if (err < 0)
     goto fail2;
 
   mdah = (struct grub_lvm_mda_header *) metadatabuf;
@@ -657,7 +689,7 @@ grub_lvm_scan_device (void *pdisk, grub_uint64_t start_off)
     {
       /* First time we see this volume group. We've to create the
 	 whole volume group structure. */
-      vg = (grub_lvm_vg*)grub_malloc (sizeof (*vg));
+      vg = (struct grub_lvm_vg*)grub_malloc (sizeof (*vg));
       if (! vg)
 	goto fail3;
       vg->name = vgname;
@@ -690,7 +722,7 @@ grub_lvm_scan_device (void *pdisk, grub_uint64_t start_off)
 	      if (*p == '}')
 		break;
 
-	      pv = (grub_lvm_pv*)grub_malloc (sizeof (*pv));
+	      pv = (struct grub_lvm_pv*)grub_malloc (sizeof (*pv));
 	      q = p;
 	      while (*q != ' ')
 		q++;
@@ -759,7 +791,7 @@ grub_lvm_scan_device (void *pdisk, grub_uint64_t start_off)
 	      if (*p == '}')
 		break;
 
-	      lv = (grub_lvm_lv*)grub_malloc (sizeof (*lv));
+	      lv = (struct grub_lvm_lv*)grub_malloc (sizeof (*lv));
 
 	      q = p;
 	      while (*q != ' ')
@@ -785,7 +817,7 @@ grub_lvm_scan_device (void *pdisk, grub_uint64_t start_off)
 #endif
 		  goto lvs_fail;
 		}
-	      lv->segments = (grub_lvm_segment*)grub_malloc (sizeof (*seg) * lv->segment_count);
+	      lv->segments = (struct grub_lvm_segment*)grub_malloc (sizeof (*seg) * lv->segment_count);
 	      seg = lv->segments;
 
 	      for (i = 0; i < lv->segment_count; i++)
@@ -842,7 +874,7 @@ grub_lvm_scan_device (void *pdisk, grub_uint64_t start_off)
 		      if (seg->node_count != 1)
 			seg->stripe_size = grub_lvm_getvalue (&p, "stripe_size = ");
 
-		      seg->nodes = (grub_lvm_node*)grub_zalloc (sizeof (*stripe)
+		      seg->nodes = (struct grub_lvm_node*)grub_zalloc (sizeof (*stripe)
 						* seg->node_count);
 		      stripe = seg->nodes;
 
@@ -894,7 +926,7 @@ grub_lvm_scan_device (void *pdisk, grub_uint64_t start_off)
 			  goto lvs_segment_fail;
 			}
 
-		      seg->nodes = (grub_lvm_node*)grub_zalloc (sizeof (seg->nodes[0])
+		      seg->nodes = (struct grub_lvm_node*)grub_zalloc (sizeof (seg->nodes[0])
 						* seg->node_count);
 
 		      p = grub_strstr (p, "mirrors = [");
@@ -1011,6 +1043,7 @@ grub_lvm_scan_device (void *pdisk, grub_uint64_t start_off)
 	
       }
 
+    vg->start_offset = start_off;
 	vg->next = vg_list;
 	vg_list = vg;
     }

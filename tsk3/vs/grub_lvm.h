@@ -20,9 +20,8 @@
 #ifndef GRUB_LVM_H
 #define GRUB_LVM_H	1
 
-#include "base/tsk_os.h"
-///#include <grub/types.h>
-#include "grub-types.h"
+#include "tsk_vs_i.h"
+#include "grub_types.h"
 
 /* Length of ID string, excluding terminating zero. */
 #define GRUB_LVM_ID_STRLEN 38
@@ -33,6 +32,7 @@ struct grub_lvm_vg {
   char id[GRUB_LVM_ID_STRLEN+1];
   char *name;
   int extent_size;
+  grub_uint64_t start_offset;
   struct grub_lvm_pv *pvs;
   struct grub_lvm_lv *lvs;
   struct grub_lvm_vg *next;
@@ -151,4 +151,5 @@ grub_get_largest_volume();
 
 grub_uint64_t
 grub_get_lv_offset (struct grub_lvm_lv *lv);
+uint8_t grub_lvm_get_offsets(void *vs, int (*hook)(void *vs, grub_uint64_t offset, grub_uint64_t size));
 #endif /* ! GRUB_LVM_H */

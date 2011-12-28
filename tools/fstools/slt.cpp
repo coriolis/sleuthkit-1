@@ -108,6 +108,7 @@ int slt_lvm_get_larget_partition(TSK_DADDR_T off)
     if(!g_img)
         return 0;
     printf("Scanning lvm \n");
+#if 0
     if((ret = grub_lvm_scan_device(g_img, off)))
     {
         printf("Failed to scan device, %d\n", ret);
@@ -118,7 +119,7 @@ int slt_lvm_get_larget_partition(TSK_DADDR_T off)
 
     //offset is from the lvm start so add that too
     selected_part_start = grub_get_largest_volume_offset()+selected_part_start;
-
+#endif
     return 0;
 }
 

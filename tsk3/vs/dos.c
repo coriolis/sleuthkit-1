@@ -15,11 +15,16 @@
 #include "tsk_vs_i.h"
 #include "tsk_dos.h"
 
+#include "grub_types.h"
+#include "grub_lvm.h"
 
 /* Check the extended partition flags */
 #define dos_is_ext(x)	\
 	((((x) == 0x05) || ((x) == 0x0F) || ((x) == 0x85)) ? 1 : 0)
 
+/* Check the lvm partition flags */
+#define dos_is_lvm(x)	\
+	((x) == 0x8e ? 1 : 0)
 /* 
  * dos_get_desc
  *
@@ -654,6 +659,66 @@ dos_get_desc(uint8_t ptype)
     return str;
 }
 
+static int lvm_counter = 0;
+uint8_t lvm_part_clbk(TSK_VS_INFO * vs, TSK_DADDR_T sect_cur, 
+                    TSK_DADDR_T size)
+{
+    
+    int ret = 0;
+    dos_sect *sect;
+    char *sect_buf;
+    int i=0;
+
+    if (tsk_verbose)
+        tsk_fprintf(stderr,
+            "Adding partition: Sector: %" PRIuDADDR " size %" PRIuDADDR,
+                sect_cur, size);
+
+    lvm_counter++;
+    if (NULL == tsk_vs_part_add(vs,
+            (TSK_DADDR_T) (sect_cur),
+            (TSK_DADDR_T) size, TSK_VS_PART_FLAG_ALLOC,
+            dos_get_desc(0x8e), 0, lvm_counter)) {
+        return 1;
+
+    }
+    return 0;
+}
+
+    
+/* 
+ * Load an lvm partition table into the structure in TSK_VS_INFO.
+ *
+ * sect_cur: The sector where the lvm table is located
+ * 
+ * Return 1 on error and 0 on success
+ *
+ */
+static uint8_t
+dos_load_lvm_table(TSK_VS_INFO * vs, TSK_DADDR_T sect_cur)
+{
+    dos_sect *sect;
+    char *sect_buf;
+    int ret =0;
+
+    ret = grub_lvm_scan_device(vs, sect_cur);
+
+    if(ret)
+    {
+        tsk_errno = ret;
+        snprintf(tsk_errstr, TSK_ERRSTR_L,
+            "Failed to scan LVM partitions starting a %"
+            PRIuDADDR, sect_cur);
+        return 1;
+    }
+
+    lvm_counter =0;
+    grub_lvm_get_offsets(vs, lvm_part_clbk);
+
+    return 0;
+}
+
+
 /* 
  * Load an extended partition table into the structure in TSK_VS_INFO.
  *
@@ -777,6 +842,33 @@ dos_load_ext_table(TSK_VS_INFO * vs, TSK_DADDR_T sect_cur,
                     sect_ext_base, table + 1)) {
                 free(sect_buf);
                 return 1;
+            }
+        }
+        else if(dos_is_lvm(part->ptype)) {
+            /* part start is added to the start of the
+             * first LVM partition 
+             */
+
+            if (NULL == tsk_vs_part_add(vs,
+                    (TSK_DADDR_T) (sect_ext_base + part_start),
+                    (TSK_DADDR_T) part_size, TSK_VS_PART_FLAG_META,
+                    dos_get_desc(part->ptype), table, i)) {
+                free(sect_buf);
+                return 1;
+            }
+
+            if (sect_ext_base + part_start > max_addr) {
+                if (tsk_verbose)
+                    tsk_fprintf(stderr,
+                        "Starting sector %" PRIuDADDR
+                        " of extended partition too large for image\n",
+                        sect_ext_base + part_start);
+            }
+            /* Process the extended partition */
+            else if (dos_load_lvm_table(vs, sect_ext_base + part_start)) {
+                free(sect_buf);
+                return 1;
+            
             }
         }
 
@@ -985,6 +1077,26 @@ dos_load_prim_table(TSK_VS_INFO * vs, uint8_t test)
                     tsk_error_print(stderr);
                 }
                 tsk_error_reset();
+            }
+        }
+        else if(dos_is_lvm(part->ptype)) {
+            /* part start is added to the start of the
+             * first LVM partition 
+             */
+
+            if (NULL == tsk_vs_part_add(vs,
+                    (TSK_DADDR_T) (part_start),
+                    (TSK_DADDR_T) part_size, TSK_VS_PART_FLAG_META,
+                    dos_get_desc(part->ptype), 0, i)) {
+                free(sect_buf);
+                return 1;
+            }
+
+            /* Process the extended partition */
+            if (dos_load_lvm_table(vs, part_start)) {
+                free(sect_buf);
+                return 1;
+
             }
         }
         else {
