@@ -21,7 +21,6 @@
 */
 #include "tsk3/tsk_tools_i.h"
 #include "tsk3/fs/tsk_fs_i.h"
-#include "slt-lvm.h"
 
 #include <locale.h>
 #include <time.h>
@@ -57,73 +56,6 @@ static uint8_t
 tsk_fs_icat3(TSK_FS_INFO * fs, TSK_FS_FILE_WALK_FLAG_ENUM flags);
 
 static uint8_t tsk_get_os_info(TSK_FS_INFO * fs);
-
-
-//lvm parser open disk
-void * slt_disk_open(char *name) 
-{
-
-    return 0;
-}
-
-//lvm parser close disk
-int slt_disk_close(void *name) 
-{
-    return 0;
-}
-
-//API given to lvm parser to read from disk
-int slt_disk_read(void *disk, TSK_DADDR_T sector, TSK_DADDR_T offset, 
-                size_t size, void *buf)
-{
-    TSK_DADDR_T off = 0;
-    int ret = 0;
-    sector += offset >>GRUB_DISK_SECTOR_BITS;
-    offset &= g_img->sector_size-1;
-
-    off = sector * g_img->sector_size;
-
-    ret= tsk_img_read(g_img, off, (char *)buf, size);
-    if(ret > 0)
-        ret = 0;
-
-    return ret;
-
-}
-
-//Callback called from lvm iterator
-int slt_lvm_iterate_clbk(const char *name)
-{
-    printf("Volume : %s \n", name);
-    return 0;
-}
-
-//API to iterate over lvms
-// off -> starting offset in sect. of lvm partition
-// sets offset of largest partition in selected_part_start
-int slt_lvm_get_larget_partition(TSK_DADDR_T off) 
-{
-    int ret = 0;
-
-    if(!g_img)
-        return 0;
-    printf("Scanning lvm \n");
-#if 0
-    if((ret = grub_lvm_scan_device(g_img, off)))
-    {
-        printf("Failed to scan device, %d\n", ret);
-        return ret;
-    }
-
-    grub_lvm_iterate(slt_lvm_iterate_clbk);
-
-    //offset is from the lvm start so add that too
-    selected_part_start = grub_get_largest_volume_offset()+selected_part_start;
-#endif
-    return 0;
-}
-
-
 
 
 void
@@ -572,10 +504,6 @@ detect_partition_offset(TSK_IMG_INFO *img)
         }
     }
     if (selected_part_len) {
-        
-        if(strstr(selected_part_desc, "0x8e")) {
-            slt_lvm_get_larget_partition(selected_part_start);
-        }
         fprintf(stderr, "Selected partition at offset %.10" PRIuDADDR " size %.10" PRIuDADDR " desc %s\n", selected_part_start, selected_part_len, selected_part_desc);
     }
     return selected_part_start;

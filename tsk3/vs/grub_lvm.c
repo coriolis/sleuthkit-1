@@ -194,6 +194,7 @@ grub_lvm_memberlist (grub_disk_t disk)
 }
 #endif
 
+#if 0
 static grub_err_t
 grub_lvm_open (const char *name, grub_disk_t disk)
 {
@@ -226,7 +227,6 @@ static grub_err_t
 read_lv (struct grub_lvm_lv *lv, grub_disk_addr_t sector,
 	 grub_size_t size, char *buf);
 
-#if 0
 static grub_err_t
 read_node (const struct grub_lvm_node *node, grub_disk_addr_t sector,
 	   grub_size_t size, char *buf)
@@ -500,8 +500,6 @@ read_lv (struct grub_lvm_lv *lv, grub_disk_addr_t sector,
     }
   return (grub_err_t)grub_error ("unknown LVM segment");
 }
-#endif
-#if 0
 static grub_err_t
 grub_lvm_read (grub_disk_t disk, grub_disk_addr_t sector,
 		grub_size_t size, char *buf)
@@ -509,7 +507,6 @@ grub_lvm_read (grub_disk_t disk, grub_disk_addr_t sector,
   ///return read_lv (disk->data, sector, size, buf);
   return read_lv ((grub_lvm_lv*)disk, sector, size, buf);
 }
-#endif
 
 static grub_err_t
 grub_lvm_write (grub_disk_t disk __attribute ((unused)),
@@ -519,12 +516,13 @@ grub_lvm_write (grub_disk_t disk __attribute ((unused)),
 {
   return GRUB_ERR_NOT_IMPLEMENTED_YET;
 }
+#endif
 
 int
 grub_lvm_scan_device (void *pdisk, grub_uint64_t start_off)
 {
   grub_err_t err;
-  grub_err_t grub_errno;
+  grub_err_t grub_errno=0;
   grub_disk_t disk;
   grub_uint64_t mda_offset, mda_size;
   char buf[GRUB_LVM_LABEL_SIZE];

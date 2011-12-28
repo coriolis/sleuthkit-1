@@ -665,9 +665,6 @@ uint8_t lvm_part_clbk(TSK_VS_INFO * vs, TSK_DADDR_T sect_cur,
 {
     
     int ret = 0;
-    dos_sect *sect;
-    char *sect_buf;
-    int i=0;
 
     if (tsk_verbose)
         tsk_fprintf(stderr,
@@ -682,7 +679,7 @@ uint8_t lvm_part_clbk(TSK_VS_INFO * vs, TSK_DADDR_T sect_cur,
         return 1;
 
     }
-    return 0;
+    return ret;
 }
 
     
@@ -697,8 +694,6 @@ uint8_t lvm_part_clbk(TSK_VS_INFO * vs, TSK_DADDR_T sect_cur,
 static uint8_t
 dos_load_lvm_table(TSK_VS_INFO * vs, TSK_DADDR_T sect_cur)
 {
-    dos_sect *sect;
-    char *sect_buf;
     int ret =0;
 
     ret = grub_lvm_scan_device(vs, sect_cur);
