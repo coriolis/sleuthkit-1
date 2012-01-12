@@ -542,8 +542,8 @@ ntfs_find_idxentry(NTFS_INFO * a_ntfs, TSK_FS_DIR * a_fs_dir,
     if (tsk_verbose)
         tsk_fprintf(stderr,
             "ntfs_find_idxentry: Processing index entry: %" PRIu64
-            "  Size: %" PRIu32 "  Len: %" PRIu32 "\n",
-            (uint64_t) ((uintptr_t) a_idxe), a_idxe_len, a_used_len);
+            "  Size: %" PRIu32 "  Len: %" PRIu32 " Flag %"PRIu32 "\n",
+            (uint64_t) ((uintptr_t) a_idxe), a_idxe_len, a_used_len, a_idxe->flags);
 
     /* Sanity check */
     if (a_idxe_len < a_used_len) {
@@ -559,6 +559,8 @@ ntfs_find_idxentry(NTFS_INFO * a_ntfs, TSK_FS_DIR * a_fs_dir,
 
     /* where is the end of the allocated data */
     endaddr_alloc = ((uintptr_t) a_idxe + a_used_len);
+
+    *next_vcn = -1;
 
     /* cycle through the index entries, based on provided size */
     while((uintptr_t)a_idxe < endaddr_alloc) {
@@ -578,12 +580,12 @@ ntfs_find_idxentry(NTFS_INFO * a_ntfs, TSK_FS_DIR * a_fs_dir,
             tsk_fprintf(stderr,
                 "ntfs_find_idxentry: New IdxEnt: %" PRIu64
                 " $FILE_NAME Entry: %" PRIu64 "  File Ref: %" PRIu64
-                "  IdxEnt Len: %" PRIu16 "  StrLen: %" PRIu16 "\n",
+                "  IdxEnt Len: %" PRIu16 "  StrLen: %" PRIu16 " Flag %"PRIu32 "\n",
                 (uint64_t) ((uintptr_t) a_idxe),
                 (uint64_t) ((uintptr_t) fname),
                 (uint64_t) tsk_getu48(fs->endian, a_idxe->file_ref),
                 tsk_getu16(fs->endian, a_idxe->idxlen),
-                tsk_getu16(fs->endian, a_idxe->strlen));
+                tsk_getu16(fs->endian, a_idxe->strlen), a_idxe->flags);
 
         /* perform some sanity checks on index buffer head
          * and advance by 4-bytes if invalid
