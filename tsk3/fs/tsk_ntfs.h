@@ -445,7 +445,7 @@ extern "C" {
  * 8 bytes of the structure 
  */
 #define GET_IDXENTRY_SUB(fs, e)	\
-	(tsk_getu64(fs->endian, (int)e + tsk_getu16(fs->endian, e->idxlen) - 8))
+	(tsk_getu64(fs->endian, (uint64_t)e + tsk_getu16(fs->endian, e->idxlen) - 8))
 
 
 

@@ -339,6 +339,7 @@ ntfs_proc_idxentry(NTFS_INFO * a_ntfs, TSK_FS_DIR * a_fs_dir,
         ntfs_attr_fname *fname = (ntfs_attr_fname *) & a_idxe->stream;
 
 
+
         if (tsk_verbose)
             tsk_fprintf(stderr,
                 "ntfs_proc_idxentry: New IdxEnt: %" PRIu64
@@ -519,7 +520,250 @@ ntfs_proc_idxentry(NTFS_INFO * a_ntfs, TSK_FS_DIR * a_fs_dir,
     return TSK_OK;
 }
 
+//find particular entry or subnode to look into
+static TSK_RETVAL_ENUM
+ntfs_find_idxentry(NTFS_INFO * a_ntfs, TSK_FS_DIR * a_fs_dir,
+    uint8_t a_is_del, ntfs_idxentry * a_idxe, uint32_t a_idxe_len,
+    uint32_t a_used_len, char *lookupto, TSK_OFF_T *next_vcn)
+{
+    uintptr_t endaddr, endaddr_alloc;
+    TSK_FS_NAME *fs_name;
+    TSK_FS_INFO *fs = (TSK_FS_INFO *) & a_ntfs->fs_info;
+    int last = 0, result = 0;
+    TSK_RETVAL_ENUM ret = TSK_OK;
 
+    if (a_is_del == 1) {
+        return 0;
+    }
+    if ((fs_name = tsk_fs_name_alloc(NTFS_MAXNAMLEN_UTF8, 0)) == NULL) {
+        return TSK_ERR;
+    }
+
+    if (tsk_verbose)
+        tsk_fprintf(stderr,
+            "ntfs_find_idxentry: Processing index entry: %" PRIu64
+            "  Size: %" PRIu32 "  Len: %" PRIu32 "\n",
+            (uint64_t) ((uintptr_t) a_idxe), a_idxe_len, a_used_len);
+
+    /* Sanity check */
+    if (a_idxe_len < a_used_len) {
+        tsk_error_reset();
+        tsk_errno = TSK_ERR_FS_ARG;
+        snprintf(tsk_errstr, TSK_ERRSTR_L,
+            "ntfs_find_idxentry: Allocated length of index entries is larger than buffer length");
+        return TSK_ERR;
+    }
+
+    /* where is the end of the buffer */
+    endaddr = ((uintptr_t) a_idxe + a_idxe_len);
+
+    /* where is the end of the allocated data */
+    endaddr_alloc = ((uintptr_t) a_idxe + a_used_len);
+
+    /* cycle through the index entries, based on provided size */
+    while((uintptr_t)a_idxe < endaddr_alloc) {
+
+        if(a_idxe->flags & NTFS_IDX_SUB)
+            *next_vcn = (TSK_OFF_T)GET_IDXENTRY_SUB(fs, a_idxe);
+        if(a_idxe->flags & NTFS_IDX_LAST) {
+            break;
+        } 
+        if (((uintptr_t) & (a_idxe->stream) + sizeof(ntfs_attr_fname)) >
+                endaddr_alloc)
+            break;
+
+        ntfs_attr_fname *fname = (ntfs_attr_fname *) & a_idxe->stream;
+
+        if (tsk_verbose)
+            tsk_fprintf(stderr,
+                "ntfs_find_idxentry: New IdxEnt: %" PRIu64
+                " $FILE_NAME Entry: %" PRIu64 "  File Ref: %" PRIu64
+                "  IdxEnt Len: %" PRIu16 "  StrLen: %" PRIu16 "\n",
+                (uint64_t) ((uintptr_t) a_idxe),
+                (uint64_t) ((uintptr_t) fname),
+                (uint64_t) tsk_getu48(fs->endian, a_idxe->file_ref),
+                tsk_getu16(fs->endian, a_idxe->idxlen),
+                tsk_getu16(fs->endian, a_idxe->strlen));
+
+        /* perform some sanity checks on index buffer head
+         * and advance by 4-bytes if invalid
+         */
+        if ((tsk_getu48(fs->endian, a_idxe->file_ref) > fs->last_inum) ||
+            (tsk_getu48(fs->endian, a_idxe->file_ref) < fs->first_inum) ||
+            (tsk_getu16(fs->endian,
+                    a_idxe->idxlen) <= tsk_getu16(fs->endian,
+                    a_idxe->strlen))
+            || (tsk_getu16(fs->endian, a_idxe->idxlen) % 4)
+            || (tsk_getu16(fs->endian, a_idxe->idxlen) > a_idxe_len)) {
+            a_idxe = (ntfs_idxentry *) ((uintptr_t) a_idxe + 4);
+            continue;
+        }
+
+        /* do some sanity checks on the deleted entries
+         */
+        if ((tsk_getu16(fs->endian, a_idxe->strlen) == 0) ||
+            (((uintptr_t) a_idxe + tsk_getu16(fs->endian,
+                        a_idxe->idxlen)) > endaddr_alloc)) {
+
+            continue; /* we don't need any stinking deleted entries */
+            /* name space checks */
+            if ((fname->nspace != NTFS_FNAME_POSIX) &&
+                (fname->nspace != NTFS_FNAME_WIN32) &&
+                (fname->nspace != NTFS_FNAME_DOS) &&
+                (fname->nspace != NTFS_FNAME_WINDOS)) {
+                a_idxe = (ntfs_idxentry *) ((uintptr_t) a_idxe + 4);
+                if (tsk_verbose)
+                    tsk_fprintf(stderr,
+                        "ntfs_find_idxentry: Skipping because of invalid name space\n");
+                continue;
+            }
+
+            if ((tsk_getu64(fs->endian, fname->alloc_fsize) <
+                    tsk_getu64(fs->endian, fname->real_fsize))
+                || (fname->nlen == 0)
+                || (*(uint8_t *) & fname->name == 0)) {
+
+                a_idxe = (ntfs_idxentry *) ((uintptr_t) a_idxe + 4);
+                if (tsk_verbose)
+                    tsk_fprintf(stderr,
+                        "ntfs_find_idxentry: Skipping because of reported file sizes, name length, or NULL name\n");
+                continue;
+            }
+
+            if ((is_time(tsk_getu64(fs->endian, fname->crtime)) == 0) ||
+                (is_time(tsk_getu64(fs->endian, fname->atime)) == 0) ||
+                (is_time(tsk_getu64(fs->endian, fname->mtime)) == 0)) {
+
+                a_idxe = (ntfs_idxentry *) ((uintptr_t) a_idxe + 4);
+                if (tsk_verbose)
+                    tsk_fprintf(stderr,
+                        "ntfs_find_idxentry: Skipping because of invalid times\n");
+                continue;
+            }
+        }
+
+        /* For all fname entries, there will exist a DOS style 8.3 
+         * entry.  We don't process those because we already processed
+         * them before in their full version.  If the type is 
+         * full POSIX or WIN32 that does not satisfy DOS, then a 
+         * type NTFS_FNAME_DOS will exist.  If the name is WIN32,
+         * but already satisfies DOS, then a type NTFS_FNAME_WINDOS
+         * will exist 
+         *
+         * Note that we could be missing some info from deleted files
+         * if the windows version was deleted and the DOS wasn't...
+         *
+         * @@@ This should be added to the shrt_name entry of TSK_FS_NAME.  The short
+         * name entry typically comes after the long name
+         */
+
+        if (fname->nspace == NTFS_FNAME_DOS) {
+            if (tsk_verbose)
+                tsk_fprintf(stderr,
+                    "ntfs_find_idxentry: Skipping because of name space: %d\n",
+                    fname->nspace);
+
+            goto incr_entry;
+        }
+
+        /* Copy it into the generic form */
+        if (ntfs_dent_copy(a_ntfs, a_idxe, fs_name)) {
+            if (tsk_verbose)
+                tsk_fprintf(stderr,
+                    "ntfs_find_idxentry: Skipping because error copying dent_entry\n");
+            goto incr_entry;
+        }
+        if (tsk_verbose)
+            tsk_fprintf(stderr,
+                       "looking for %s, Idx entry for %s \n", lookupto, fs_name->name);
+
+        if (lookupto) {
+            result = fs->name_cmp(fs, lookupto, fs_name->name);
+            if(result > 0) {
+                if(a_idxe->flags & NTFS_IDX_SUB)
+                    *next_vcn = (TSK_OFF_T)GET_IDXENTRY_SUB(fs, a_idxe);
+                goto incr_entry;
+            } else if (result == 0){
+                if (tsk_verbose) {
+                    tsk_fprintf(stderr,
+                        "ntfs_find_idxentry: Found: %s\n",
+                        fs_name->name);
+                }
+                ret = TSK_STOP;
+                last = 1;
+            } else {
+                if(!(a_idxe->flags & NTFS_IDX_SUB))
+                    *next_vcn = -1;
+                break;
+            }
+        }
+
+        /* 
+         * Check if this entry is deleted
+         *
+         * The final check is to see if the end of this entry is 
+         * within the space that the idxallocbuf claimed was valid OR
+         * if the parent directory is deleted
+         */
+        if ((a_is_del == 1) ||
+            (tsk_getu16(fs->endian, a_idxe->strlen) == 0) ||
+            (((uintptr_t) a_idxe + tsk_getu16(fs->endian,
+                        a_idxe->idxlen)) > endaddr_alloc)) {
+            fs_name->flags = TSK_FS_NAME_FLAG_UNALLOC;
+        }
+        else {
+            fs_name->flags = TSK_FS_NAME_FLAG_ALLOC;
+        }
+
+        if (tsk_verbose)
+            tsk_fprintf(stderr,
+                "ntfs_find_idxentry: Entry Details of %s: Str Len: %"
+                PRIu16 "  Len to end after current: %" PRIu64
+                "  flags: %x\n", fs_name->name, tsk_getu16(fs->endian,
+                    a_idxe->strlen),
+                (uint64_t) (endaddr_alloc - (uintptr_t) a_idxe -
+                    tsk_getu16(fs->endian, a_idxe->idxlen)),
+                fs_name->flags);
+
+        if (tsk_fs_dir_add(a_fs_dir, fs_name)) {
+            tsk_fs_name_free(fs_name);
+            return TSK_ERR;
+        }
+
+        if (last) {
+            break;
+        }
+
+      incr_entry:
+
+        /* the theory here is that deleted entries have strlen == 0 and
+         * have been found to have idxlen == 16
+         *
+         * if the strlen is 0, then guess how much the indexlen was
+         * before it was deleted
+         */
+
+        /* 16: size of idxentry before stream
+         * 66: size of fname before name
+         * 2*nlen: size of name (in unicode)
+         */
+        if (tsk_getu16(fs->endian, a_idxe->strlen) == 0) {
+            a_idxe =
+                (ntfs_idxentry
+                *) ((((uintptr_t) a_idxe + 16 + 66 + 2 * fname->nlen +
+                        3) / 4) * 4);
+        }
+        else {
+            a_idxe =
+                (ntfs_idxentry *) ((uintptr_t) a_idxe +
+                tsk_getu16(fs->endian, a_idxe->idxlen));
+        }
+
+    }                           /* end of loop of index entries */
+
+    tsk_fs_name_free(fs_name);
+    return ret;
+}
 
 
 /*
@@ -603,6 +847,289 @@ ntfs_fix_idxrec(NTFS_INFO * ntfs, ntfs_idxrec * idxrec, uint32_t len)
 }
 
 
+TSK_RETVAL_ENUM
+ntfs_dir_open_meta_inner_btree(TSK_FS_INFO * a_fs, TSK_FS_DIR ** a_fs_dir,
+    TSK_INUM_T a_addr, char *lookupto)
+{
+    NTFS_INFO *ntfs = (NTFS_INFO *) a_fs;
+    TSK_FS_DIR *fs_dir;
+    const TSK_FS_ATTR *fs_attr_root = NULL;
+    const TSK_FS_ATTR *fs_attr_idx;
+    ntfs_idxentry *idxe;
+    ntfs_idxroot *idxroot;
+    ntfs_idxelist *idxelist;
+    ntfs_idxrec *idxrec_p, *idxrec;
+    int off;
+    TSK_OFF_T next_vcn = -1;
+    int len =0, to_read = 0;
+    char *buf = NULL;
+
+    /* In this function, we will return immediately if we get an error.
+     * If we get corruption though, we will record that in 'retval_final'
+    */
+    TSK_RETVAL_ENUM retval_final = TSK_OK;
+    TSK_RETVAL_ENUM retval_tmp;
+
+    /* sanity check */
+    if (a_addr < a_fs->first_inum || a_addr > a_fs->last_inum) {
+        tsk_error_reset();
+        tsk_errno = TSK_ERR_FS_WALK_RNG;
+        snprintf(tsk_errstr, TSK_ERRSTR_L,
+            "ntfs_dir_open_meta: inode value: %" PRIuINUM "\n", a_addr);
+        return TSK_ERR;
+    }
+    else if (a_fs_dir == NULL) {
+        tsk_error_reset();
+        tsk_errno = TSK_ERR_FS_ARG;
+        snprintf(tsk_errstr, TSK_ERRSTR_L,
+            "ntfs_dir_open_meta: NULL fs_attr argument given");
+        return TSK_ERR;
+    }
+
+    if (tsk_verbose)
+        tsk_fprintf(stderr,
+            "ntfs_open_dir: Processing directory %" PRIuINUM "\n", a_addr);
+
+    fs_dir = *a_fs_dir;
+    if (fs_dir) {
+        tsk_fs_dir_reset(fs_dir);
+    }
+    else {
+        if ((*a_fs_dir = fs_dir = tsk_fs_dir_alloc(a_fs, a_addr, 128)) == NULL) {
+            return TSK_ERR;
+        }
+    }
+
+    /* Get the inode and verify it has attributes */
+    if ((fs_dir->fs_file =
+            tsk_fs_file_open_meta(a_fs, NULL, a_addr)) == NULL) {
+        strncat(tsk_errstr2, " - ntfs_dir_open_meta",
+            TSK_ERRSTR_L - strlen(tsk_errstr2));
+        return TSK_COR;
+    }
+
+    if (!(fs_dir->fs_file->meta->attr)) {
+        tsk_error_reset();
+        tsk_errno = TSK_ERR_FS_INODE_COR;
+        snprintf(tsk_errstr, TSK_ERRSTR_L,
+            "dent_walk: Error: Directory address %" PRIuINUM
+            " has no attributes", a_addr);
+        return TSK_COR;
+    }
+
+
+    /* 
+     * Read the Index Root Attribute  -- we do some sanity checking here
+     * to report errors 
+     */
+    fs_attr_root =
+        tsk_fs_attrlist_get(fs_dir->fs_file->meta->attr,
+        NTFS_ATYPE_IDXROOT);
+    if (!fs_attr_root) {
+        strncat(tsk_errstr2, " - dent_walk: $IDX_ROOT not found",
+            TSK_ERRSTR_L - strlen(tsk_errstr2));
+        return TSK_COR;
+    }
+
+    if (fs_attr_root->flags & TSK_FS_ATTR_NONRES) {
+        tsk_error_reset();
+        tsk_errno = TSK_ERR_FS_INODE_COR;
+        snprintf(tsk_errstr, TSK_ERRSTR_L,
+            "dent_walk: $IDX_ROOT is not resident - it should be");
+        return TSK_COR;
+    }
+    idxroot = (ntfs_idxroot *) fs_attr_root->rd.buf;
+
+    /* Verify that the attribute type is $FILE_NAME */
+    if (tsk_getu32(a_fs->endian, idxroot->type) == 0) {
+        tsk_error_reset();
+        tsk_errno = TSK_ERR_FS_INODE_COR;
+        snprintf(tsk_errstr, TSK_ERRSTR_L,
+            "dent_walk: Attribute type in index root is 0");
+        return TSK_COR;
+    }
+    else if (tsk_getu32(a_fs->endian, idxroot->type) != NTFS_ATYPE_FNAME) {
+        tsk_error_reset();
+        tsk_errno = TSK_ERR_FS_INODE_COR;
+        snprintf(tsk_errstr, TSK_ERRSTR_L,
+            "ERROR: Directory index is sorted by type: %" PRIu32
+            ".\nOnly $FNAME is currently supported",
+            tsk_getu32(a_fs->endian, idxroot->type));
+        return TSK_COR;
+    }
+
+    /* Get the header of the index entry list */
+    idxelist = &idxroot->list;
+
+    /* Get the offset to the start of the index entry list */
+    idxe = (ntfs_idxentry *) ((uintptr_t) idxelist +
+        tsk_getu32(a_fs->endian, idxelist->begin_off));
+
+    /* Now we return to processing the Index Root Attribute */
+    if (tsk_verbose)
+        tsk_fprintf(stderr,
+            "ntfs_dir_open_meta: Processing $IDX_ROOT of inum %" PRIuINUM
+            "\n", a_addr);
+
+    /* Verify the offset pointers */
+    if ((tsk_getu32(a_fs->endian, idxelist->seqend_off) <
+            tsk_getu32(a_fs->endian, idxelist->begin_off)) ||
+        (tsk_getu32(a_fs->endian, idxelist->bufend_off) <
+            tsk_getu32(a_fs->endian, idxelist->seqend_off)) ||
+        (((uintptr_t) idxe + tsk_getu32(a_fs->endian,
+                    idxelist->bufend_off)) >
+            ((uintptr_t) fs_attr_root->rd.buf +
+                fs_attr_root->rd.buf_size))) {
+        tsk_error_reset();
+        tsk_errno = TSK_ERR_FS_INODE_COR;
+        snprintf(tsk_errstr, TSK_ERRSTR_L,
+            "Error: Index list offsets are invalid on entry: %" PRIuINUM,
+            fs_dir->fs_file->meta->addr);
+        return TSK_COR;
+    }
+
+    //locate particular entry in idxroot or get vcn in next_vcn for entry
+    // which may have the file/dir
+    retval_tmp = ntfs_find_idxentry(ntfs, fs_dir,
+        (fs_dir->fs_file->meta->flags & TSK_FS_META_FLAG_UNALLOC) ? 1 : 0,
+        idxe,
+        tsk_getu32(a_fs->endian, idxelist->bufend_off),
+        tsk_getu32(a_fs->endian, idxelist->seqend_off),
+        lookupto, &next_vcn);
+
+    // stop if we get an error, continue if we got corruption
+    if (retval_tmp == TSK_ERR) {
+        return TSK_ERR;
+    }
+    else if (retval_tmp == TSK_COR) {
+        retval_final = TSK_COR;
+    }
+    else if (retval_tmp == TSK_STOP) {
+        return TSK_OK;
+    }
+
+    if(next_vcn < 0 ) {
+        snprintf(tsk_errstr, TSK_ERRSTR_L, "Cannot find %s\n", lookupto);
+        return TSK_OK;
+    }
+    
+    //entry is not in idxroot, need to check in idxalloc
+
+    /* 
+     * get the index allocation attribute if it exists (it doesn't for 
+     * small directories 
+     */
+    fs_attr_idx =
+        tsk_fs_attrlist_get(fs_dir->fs_file->meta->attr,
+        NTFS_ATYPE_IDXALLOC);
+
+
+    /* if we don't have an index alloc then return, 
+     */
+    if (!fs_attr_idx) {
+        if (tsk_getu32(a_fs->endian,
+                idxelist->flags) & NTFS_IDXELIST_CHILD) {
+            tsk_error_reset();
+            tsk_errno = TSK_ERR_FS_INODE_COR;
+            snprintf(tsk_errstr, TSK_ERRSTR_L,
+                "Error: $IDX_ROOT says there should be children, but there isn't");
+            return TSK_COR;
+        }
+    }
+    else {
+
+        if (fs_attr_idx->flags & TSK_FS_ATTR_RES) {
+            tsk_error_reset();
+            tsk_errno = TSK_ERR_FS_INODE_COR;
+            snprintf(tsk_errstr, TSK_ERRSTR_L,
+                "$IDX_ALLOC is Resident - it shouldn't be");
+            return TSK_COR;
+        }
+
+        //try to get buffer size
+        //to_read= fs_attr_idx->nrd.allocsize;
+        to_read = tsk_getu32(a_fs->endian, idxroot->idxalloc_size_b);
+
+        if(to_read < 0) {
+            snprintf(tsk_errstr, TSK_ERRSTR_L,
+                "Error: Failed to get IDXALLOC buffer len");
+            return TSK_ERR;
+        }
+            
+        buf = (char *) tsk_malloc(to_read);
+        len = to_read;
+
+        idxrec_p = idxrec = NULL;
+        while(next_vcn >=0 ) {
+            uint32_t list_len;
+            off= next_vcn * a_fs->block_size; 
+            if (tsk_verbose)
+                tsk_fprintf(stderr, 
+                            "IDXAlloc len :%d, offset %d of idxalloc of length %d\n", to_read, off, fs_attr_idx->nrd.allocsize);
+            to_read= tsk_fs_attr_read(fs_attr_idx, off, buf, len, TSK_FS_FILE_READ_FLAG_SLACK);
+            idxrec = (ntfs_idxrec *) & buf[0];
+
+            /* Is this the begining of an index record? */
+            if (tsk_getu32(a_fs->endian,
+                    idxrec->magic) != NTFS_IDXREC_MAGIC) {
+                    tsk_fprintf(stderr,
+                        "IDX record do not have MAGIC %"PRIuINUM " need %" PRIuINUM,
+                        tsk_getu32(a_fs->endian, idxrec->magic), NTFS_IDXREC_MAGIC);
+                    break;
+            }
+            if(tsk_getu32(a_fs->endian, idxrec->idx_vcn) != next_vcn) {
+                    tsk_fprintf(stderr,
+                        "IDX record VCN %"PRIuINUM" do not match with asked VCN %"PRIuINUM,
+                        tsk_getu32(a_fs->endian, idxrec->idx_vcn), next_vcn);
+                    break;
+            }
+
+            idxrec_p = idxrec;
+            /* Locate the start of the index entry list */
+            idxelist = &idxrec_p->list;
+            idxe = (ntfs_idxentry *) ((uintptr_t) idxelist +
+                tsk_getu32(a_fs->endian, idxelist->begin_off));
+            /* the length from the start of the next record to where our
+             * list starts.
+             * This should be the same as bufend_off in idxelist, but we don't
+             * trust it.
+             */
+            list_len = tsk_getu32(a_fs->endian, idxelist->seqend_off);
+            if(list_len > tsk_getu32(a_fs->endian, idxroot->idxalloc_size_b)) {
+                tsk_fprintf(stderr,
+                        "IDX record length%"PRIuINUM" more than idxalloc size %"PRIuINUM,
+                        list_len, tsk_getu32(a_fs->endian, idxroot->idxalloc_size_b));
+
+                break;
+            }
+            //printf("list len : %lu, Seq len %lu, buf len %lu\n", list_len,
+                //tsk_getu32(a_fs->endian, idxelist->seqend_off) - tsk_getu32(a_fs->endian, idxelist->begin_off),
+                //tsk_getu32(a_fs->endian, idxelist->bufend_off) - tsk_getu32(a_fs->endian, idxelist->begin_off)
+            //);
+
+            /* process the list of index entries */
+            retval_tmp = ntfs_find_idxentry(ntfs, fs_dir,
+                (fs_dir->fs_file->meta->
+                    flags & TSK_FS_META_FLAG_UNALLOC) ? 1 : 0, idxe,
+                    tsk_getu32(a_fs->endian, idxelist->bufend_off), 
+                    list_len,
+                    lookupto, &next_vcn);
+            // stop if we get an error, record if we get corruption
+            if (retval_tmp == TSK_ERR) {
+                return TSK_ERR;
+            } else if (retval_tmp == TSK_COR) {
+                retval_final = TSK_COR;
+            } else if (retval_tmp == TSK_STOP) {
+                retval_final = TSK_OK;
+                break;
+            }
+
+        }
+    }
+
+
+    return TSK_OK;
+}
 
 
 
@@ -635,7 +1162,6 @@ ntfs_dir_open_meta_inner(TSK_FS_INFO * a_fs, TSK_FS_DIR ** a_fs_dir,
     int off;
     TSK_OFF_T idxalloc_len;
     TSK_FS_LOAD_FILE load_file;
-    NTFS_PAR_MAP *map;
 
     /* In this function, we will return immediately if we get an error.
      * If we get corruption though, we will record that in 'retval_final'
@@ -1167,7 +1693,7 @@ TSK_RETVAL_ENUM
 ntfs_dir_open_meta_partial(TSK_FS_INFO * a_fs, TSK_FS_DIR ** a_fs_dir,
     TSK_INUM_T a_addr, char *next)
 {
-    return ntfs_dir_open_meta_inner(a_fs, a_fs_dir, a_addr, next);
+    return ntfs_dir_open_meta_inner_btree(a_fs, a_fs_dir, a_addr, next);
 }
 
 /****************************************************************************
