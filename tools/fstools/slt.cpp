@@ -420,6 +420,7 @@ process(int argc, char **argv)
     } else if (slt_osinfo) {
         retval = tsk_get_os_info(g_fs);
     } else {
+        name_flags |= TSK_FS_DIR_WALK_FLAG_FAST;
         retval = tsk_fs_fls2(g_fs, (TSK_FS_FLS_FLAG_ENUM) fls_flags, inode,
             (TSK_FS_DIR_WALK_FLAG_ENUM) name_flags, macpre, sec_skew);
         tsk_error_print(stderr);

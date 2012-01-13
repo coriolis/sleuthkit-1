@@ -343,6 +343,10 @@ tsk_fs_dir_close(TSK_FS_DIR * a_fs_dir)
             a_fs_dir->names[i].shrt_name = NULL;
             a_fs_dir->names[i].shrt_name_size = 0;
         }
+        if(a_fs_dir->names[i].extra_data) {
+            free(a_fs_dir->names[i].extra_data);
+            a_fs_dir->names[i].extra_data=NULL;
+        }
     }
     free(a_fs_dir->names);
 
@@ -466,6 +470,7 @@ tsk_fs_dir_walk_lcl(TSK_FS_INFO * a_fs, DENT_DINFO * a_dinfo,
     TSK_FS_DIR *fs_dir;
     TSK_FS_FILE *fs_file;
     size_t i;
+    int meta_done = 0;
 
     // get the list of entries in the directory 
     if ((fs_dir = tsk_fs_dir_open_meta(a_fs, a_addr)) == NULL) {
@@ -487,15 +492,39 @@ tsk_fs_dir_walk_lcl(TSK_FS_INFO * a_fs, DENT_DINFO * a_dinfo,
          * careful about resetting this before we free fs_file */
         fs_file->name = (TSK_FS_NAME *) & fs_dir->names[i];
 
-        /* load the fs_meta structure if possible.
-         * Must have non-zero inode addr or have allocated name (if inode is 0) */
-        if (((fs_file->name->meta_addr)
-                || (fs_file->name->flags & TSK_FS_NAME_FLAG_ALLOC))) {
-            if (a_fs->file_add_meta(a_fs, fs_file,
-                    fs_file->name->meta_addr)) {
-                if (tsk_verbose)
-                    tsk_error_print(stderr);
+        meta_done = 1;
+        //this is ntfs and want fast dir walk, do not load each file inode
+        if((a_fs->ftype & TSK_FS_TYPE_NTFS) && 
+            (a_flags & TSK_FS_DIR_WALK_FLAG_FAST)) {
+
+            meta_done = 1;
+            if(a_fs->file_copy_meta_from_dentry(a_fs, fs_file)) {
                 tsk_error_reset();
+                meta_done = 0;
+                if (tsk_verbose) 
+                    tsk_fprintf(stderr,
+                    "Not using data from dentry for %s \n", 
+                    fs_file->name->name? fs_file->name->name : "");
+            }
+            else {
+                if (tsk_verbose) 
+                    tsk_fprintf(stderr,
+                    "Using data from dentry for %s\n", 
+                        fs_file->name->name? fs_file->name->name : "");
+            }
+                
+        }
+        if(!meta_done) {
+            /* load the fs_meta structure if possible.
+            * Must have non-zero inode addr or have allocated name (if inode is 0) */
+            if (((fs_file->name->meta_addr)
+                    || (fs_file->name->flags & TSK_FS_NAME_FLAG_ALLOC))) {
+                if (a_fs->file_add_meta(a_fs, fs_file,
+                        fs_file->name->meta_addr)) {
+                    if (tsk_verbose)
+                        tsk_error_print(stderr);
+                    tsk_error_reset();
+                }
             }
         }
 

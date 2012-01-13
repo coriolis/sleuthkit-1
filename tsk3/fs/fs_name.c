@@ -132,6 +132,10 @@ tsk_fs_name_free(TSK_FS_NAME * fs_name)
         free(fs_name->shrt_name);
         fs_name->shrt_name = NULL;
     }
+    if(fs_name->extra_data) {
+        free(fs_name->extra_data);
+        fs_name->extra_data = NULL;
+    }
 
     free(fs_name);
 }
@@ -198,6 +202,10 @@ tsk_fs_name_copy(TSK_FS_NAME * a_fs_name_to,
     a_fs_name_to->par_addr = a_fs_name_from->par_addr;
     a_fs_name_to->type = a_fs_name_from->type;
     a_fs_name_to->flags = a_fs_name_from->flags;
+    a_fs_name_to->extra_data = tsk_malloc(a_fs_name_from->extra_data_size);
+    if(a_fs_name_to->extra_data)
+        memcpy(a_fs_name_to->extra_data,a_fs_name_from->extra_data,
+            a_fs_name_from->extra_data_size);
 
     return 0;
 }

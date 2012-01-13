@@ -554,6 +554,8 @@ extern "C" {
 
         TSK_FS_NAME_TYPE_ENUM type;     ///< File type information (directory, file, etc.)
         TSK_FS_NAME_FLAG_ENUM flags;    ///< Flags that describe allocation status etc. 
+        void *extra_data;       //additional data for FS to store
+        size_t *extra_data_size;       //additional data for FS to store
     } TSK_FS_NAME;
 
 
@@ -597,6 +599,7 @@ extern "C" {
         TSK_FS_DIR_WALK_FLAG_UNALLOC = 0x02,    ///< Return unallocated names in callback
         TSK_FS_DIR_WALK_FLAG_RECURSE = 0x04,    ///< Recurse into sub-directories 
         TSK_FS_DIR_WALK_FLAG_NOORPHAN = 0x08,   ///< Do not return (or recurse into) the special Orphan directory
+        TSK_FS_DIR_WALK_FLAG_FAST = 0x10,   ///indicate fast dir walk, if data present in fs_name do not open inode for each file
     } TSK_FS_DIR_WALK_FLAG_ENUM;
 
 
@@ -866,6 +869,7 @@ extern "C" {
          uint8_t(*inode_walk) (TSK_FS_INFO * fs, TSK_INUM_T start, TSK_INUM_T end, TSK_FS_META_FLAG_ENUM flags, TSK_FS_META_WALK_CB cb, void *ptr);     ///< FS-specific function: Call tsk_fs_meta_walk() instead. 
 
          uint8_t(*file_add_meta) (TSK_FS_INFO * fs, TSK_FS_FILE * fs_file, TSK_INUM_T addr);    ///< \internal
+         uint8_t(*file_copy_meta_from_dentry) (TSK_FS_INFO * fs, TSK_FS_FILE * fs_file);    ///< \internal
 
          TSK_FS_ATTR_TYPE_ENUM(*get_default_attr_type) (const TSK_FS_FILE *);   ///< \internal
 

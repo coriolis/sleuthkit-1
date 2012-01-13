@@ -249,6 +249,12 @@ ntfs_dent_copy(NTFS_INFO * ntfs, ntfs_idxentry * idxe,
 
     fs_name->flags = 0;
 
+    //put attributes here as well
+    fs_name->extra_data = tsk_malloc(sizeof(ntfs_attr_fname));
+    fs_name->extra_data_size = sizeof(ntfs_attr_fname);
+    if(fs_name->extra_data)
+        memcpy(fs_name->extra_data, fname, sizeof(ntfs_attr_fname));
+
     return 0;
 }
 
