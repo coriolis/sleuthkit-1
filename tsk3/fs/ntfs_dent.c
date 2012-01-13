@@ -565,9 +565,9 @@ ntfs_find_idxentry(NTFS_INFO * a_ntfs, TSK_FS_DIR * a_fs_dir,
     /* cycle through the index entries, based on provided size */
     while((uintptr_t)a_idxe < endaddr_alloc) {
 
-        if(a_idxe->flags & NTFS_IDX_SUB)
-            *next_vcn = (TSK_OFF_T)GET_IDXENTRY_SUB(fs, a_idxe);
         if(a_idxe->flags & NTFS_IDX_LAST) {
+            if(a_idxe->flags & NTFS_IDX_SUB)
+                *next_vcn = (TSK_OFF_T)GET_IDXENTRY_SUB(fs, a_idxe);
             break;
         } 
         if (((uintptr_t) & (a_idxe->stream) + sizeof(ntfs_attr_fname)) >
@@ -680,7 +680,7 @@ ntfs_find_idxentry(NTFS_INFO * a_ntfs, TSK_FS_DIR * a_fs_dir,
                        "looking for %s, Idx entry for %s \n", lookupto, fs_name->name);
 
         if (lookupto) {
-            result = fs->name_cmp(fs, lookupto, fs_name->name);
+            result = ntfs_name_collate(fs, lookupto, fs_name->name);
             if(result > 0) {
                 if(a_idxe->flags & NTFS_IDX_SUB)
                     *next_vcn = (TSK_OFF_T)GET_IDXENTRY_SUB(fs, a_idxe);
@@ -694,8 +694,12 @@ ntfs_find_idxentry(NTFS_INFO * a_ntfs, TSK_FS_DIR * a_fs_dir,
                 ret = TSK_STOP;
                 last = 1;
             } else {
+                //we didn't find entry in this alloc and already got higher entry
+                // check if this is subnode which may have this entry
                 if(!(a_idxe->flags & NTFS_IDX_SUB))
                     *next_vcn = -1;
+                else
+                    *next_vcn = (TSK_OFF_T)GET_IDXENTRY_SUB(fs, a_idxe);
                 break;
             }
         }
@@ -2013,4 +2017,16 @@ int
 ntfs_name_cmp(TSK_FS_INFO * a_fs_info, const char *s1, const char *s2)
 {
     return strcasecmp(s1, s2);
+}
+
+//function to compare names, used in btree lookup 
+// need this when node name differs in one of _ [ ] ^ ' 
+// and is lowercase
+int
+ntfs_name_collate(TSK_FS_INFO * a_fs_info, const char *s1, const char *s2)
+{
+    while(*s1 && (toupper(*s1++) == toupper(*s2++))) 
+        ;
+    s2--; s1--;
+    return toupper(*s1) - toupper(*s2);
 }
