@@ -2634,6 +2634,57 @@ ntfs_inode_lookup(TSK_FS_INFO * fs, TSK_FS_FILE * a_fs_file,
 }
 
 
+/**
+ * Set file meta data stored in fs_name 
+ * used for fast dir walk
+ * 
+ * @param fs File system to read from.
+ * @param a_fs_file data to set into
+ * @returns 1 on error 
+ */
+static uint8_t
+ntfs_file_copy_meta_from_dentry(TSK_FS_INFO * fs, TSK_FS_FILE * a_fs_file)
+{
+    NTFS_INFO *ntfs = (NTFS_INFO *) fs;
+    TSK_FS_NAME *fs_name = NULL;
+    ntfs_attr_fname *fname = NULL;
+
+    // clean up any error messages that are lying around
+    tsk_error_reset();
+
+    if (a_fs_file == NULL) {
+        tsk_errno = TSK_ERR_FS_ARG;
+        snprintf(tsk_errstr, TSK_ERRSTR_L,
+            "ntfs_inode_lookup: fs_file is NULL");
+        return 1;
+    }
+
+    fs_name = a_fs_file->name;
+
+    if(fs_name == NULL || fs_name->extra_data == NULL)
+        return 1;
+    fname = (ntfs_attr_fname *) fs_name->extra_data;
+
+    if (a_fs_file->meta == NULL) {
+        a_fs_file->meta = tsk_fs_meta_alloc(NTFS_FILE_CONTENT_LEN);
+        if (a_fs_file->meta == NULL)
+            return 1;
+    }
+    else {
+        tsk_fs_meta_reset(a_fs_file->meta);
+    }
+
+    a_fs_file->meta->ctime = nt2unixtime(tsk_getu64(fs->endian, fname->ctime));
+    a_fs_file->meta->crtime = nt2unixtime(tsk_getu64(fs->endian, fname->crtime));
+    a_fs_file->meta->mtime = nt2unixtime(tsk_getu64(fs->endian, fname->mtime));
+    a_fs_file->meta->atime = nt2unixtime(tsk_getu64(fs->endian, fname->atime));
+    a_fs_file->meta->size = tsk_getu64(fs->endian, fname->real_fsize);
+    a_fs_file->meta->type = fs_name->type;
+
+    return 0;
+}
+
+
 
 
 /**********************************************************************
@@ -4724,6 +4775,7 @@ ntfs_open(TSK_IMG_INFO * img_info, TSK_OFF_T offset,
     fs->load_attrs = ntfs_load_attrs;
 
     fs->file_add_meta = ntfs_inode_lookup;
+    fs->file_copy_meta_from_dentry = ntfs_file_copy_meta_from_dentry;
     fs->dir_open_meta = ntfs_dir_open_meta;
     fs->dir_open_meta_partial = ntfs_dir_open_meta_partial;
     fs->fsstat = ntfs_fsstat;
