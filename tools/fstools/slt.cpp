@@ -467,7 +467,7 @@ detect_partition_offset(TSK_IMG_INFO *img)
     TSK_VS_INFO *vs;
     int flags = TSK_VS_PART_FLAG_ALLOC;
     flags &= ~TSK_VS_PART_FLAG_META;
-    TSK_VS_TYPE_ENUM vstype = TSK_VS_TYPE_DETECT;
+    TSK_VS_TYPE_ENUM vstype = TSK_VS_TYPE_DOS;
     vs = tsk_vs_open(img, 0, vstype);
     if (vs == NULL) {
         tsk_error_print(stderr);
@@ -490,7 +490,7 @@ detect_partition_offset(TSK_IMG_INFO *img)
         recurse = 0;
 
         for (i = 0; i < recurse_cnt; i++) {
-            vs = tsk_vs_open(img, recurse_list[i], TSK_VS_TYPE_DETECT);
+            vs = tsk_vs_open(img, recurse_list[i], vstype);
             if (vs != NULL) {
                 if (tsk_vs_part_walk(vs, 0, vs->part_count - 1,
                         (TSK_VS_PART_FLAG_ENUM) flags, part_act, NULL)) {
