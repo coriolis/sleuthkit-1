@@ -492,7 +492,6 @@ tsk_fs_dir_walk_lcl(TSK_FS_INFO * a_fs, DENT_DINFO * a_dinfo,
          * careful about resetting this before we free fs_file */
         fs_file->name = (TSK_FS_NAME *) & fs_dir->names[i];
 
-        meta_done = 1;
         //this is ntfs and want fast dir walk, do not load each file inode
         if((a_fs->ftype & TSK_FS_TYPE_NTFS) && 
             (a_flags & TSK_FS_DIR_WALK_FLAG_FAST)) {

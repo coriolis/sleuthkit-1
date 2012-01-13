@@ -2679,6 +2679,7 @@ ntfs_file_copy_meta_from_dentry(TSK_FS_INFO * fs, TSK_FS_FILE * a_fs_file)
     a_fs_file->meta->mtime = nt2unixtime(tsk_getu64(fs->endian, fname->mtime));
     a_fs_file->meta->atime = nt2unixtime(tsk_getu64(fs->endian, fname->atime));
     a_fs_file->meta->size = tsk_getu64(fs->endian, fname->real_fsize);
+    a_fs_file->meta->type = fs_name->type;
 
     return 0;
 }

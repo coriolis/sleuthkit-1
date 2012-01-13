@@ -515,14 +515,14 @@ extern "C" {
      */
     typedef enum {
         TSK_FS_NAME_TYPE_UNDEF = 0,     ///< Unknown type
-        TSK_FS_NAME_TYPE_FIFO = 1,      ///< Named pipe 
-        TSK_FS_NAME_TYPE_CHR = 2,       ///< Character device
-        TSK_FS_NAME_TYPE_DIR = 3,       ///< Directory 
-        TSK_FS_NAME_TYPE_BLK = 4,       ///< Block device
-        TSK_FS_NAME_TYPE_REG = 5,       ///< Regular file 
+        TSK_FS_NAME_TYPE_REG = 1,       ///< Regular file 
+        TSK_FS_NAME_TYPE_DIR = 2,       ///< Directory 
+        TSK_FS_NAME_TYPE_FIFO = 3,      ///< Named pipe 
+        TSK_FS_NAME_TYPE_CHR = 4,       ///< Character device
+        TSK_FS_NAME_TYPE_BLK = 5,       ///< Block device
         TSK_FS_NAME_TYPE_LNK = 6,       ///< Symbolic link 
-        TSK_FS_NAME_TYPE_SOCK = 7,      ///< Socket 
-        TSK_FS_NAME_TYPE_SHAD = 8,      ///< Shadow inode (solaris) 
+        TSK_FS_NAME_TYPE_SHAD = 7,      ///< Shadow inode (solaris) 
+        TSK_FS_NAME_TYPE_SOCK = 8,      ///< Socket 
         TSK_FS_NAME_TYPE_WHT = 9,       ///< Whiteout (openbsd)
         TSK_FS_NAME_TYPE_VIRT = 10,     ///< Special (TSK added "Virtual" files)
     } TSK_FS_NAME_TYPE_ENUM;

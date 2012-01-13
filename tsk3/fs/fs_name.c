@@ -25,9 +25,14 @@
  */
 #include "tsk_fs_i.h"
 
+/*
 char tsk_fs_name_type_str[TSK_FS_NAME_TYPE_STR_MAX][2] =
     { "-", "p", "c", "d", "b", "r",
     "l", "s", "h", "w", "v"
+};
+*/
+char tsk_fs_name_type_str[TSK_FS_NAME_TYPE_STR_MAX][2] =
+    { "-", "r", "d", "p", "c", "b", "l", "s", "h", "w", "v"
 };
 
 /**
