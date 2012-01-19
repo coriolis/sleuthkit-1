@@ -991,6 +991,8 @@ static uint8_t tsk_get_os_info(TSK_FS_INFO * fs)
         i = osi_get_os_details("windows", (void *)clbk_open, (void *)clbk_close, (void *) clbk_read, (void *)clbk_get_size, &info);
     else if(IS_LINUX_FS(fs->ftype)) 
         i = osi_get_os_details("linux", (void *)clbk_open, (void *)clbk_close, (void *) clbk_read, (void *)clbk_get_size, &info);
+    else
+        fprintf(stderr, "OS information from this FS %d cannot be found\n", fs->ftype);
 
     //printf("Total read %d \n", readcount);
 
