@@ -25,6 +25,16 @@
 #include <locale.h>
 #include <time.h>
 
+
+#define IS_WINDOWS_FS(fstype)   ((fstype == TSK_FS_TYPE_NTFS) || \
+                                (fstype == TSK_FS_TYPE_FAT12) || \
+                                (fstype == TSK_FS_TYPE_FAT16) || \
+                                (fstype == TSK_FS_TYPE_FAT32) )
+
+#define IS_LINUX_FS(fstype)     ((fstype == TSK_FS_TYPE_EXT2) || \
+                                (fstype == TSK_FS_TYPE_EXT3)  || \
+                                (fstype == TSK_FS_TYPE_EXT4)  )
+
 TSK_IMG_TYPE_ENUM g_imgtype = TSK_IMG_TYPE_DETECT;
 TSK_IMG_INFO *g_img = NULL;
 
@@ -977,9 +987,9 @@ static uint8_t tsk_get_os_info(TSK_FS_INFO * fs)
 
     regfile.fs = fs;
     
-    if(fs->ftype == TSK_FS_TYPE_NTFS)
+    if(IS_WINDOWS_FS(fs->ftype))
         i = osi_get_os_details("windows", (void *)clbk_open, (void *)clbk_close, (void *) clbk_read, (void *)clbk_get_size, &info);
-    else if(fs->ftype & TSK_FS_TYPE_EXT3 || fs->ftype & TSK_FS_TYPE_EXT2)
+    else if(IS_LINUX_FS(fs->ftype)) 
         i = osi_get_os_details("linux", (void *)clbk_open, (void *)clbk_close, (void *) clbk_read, (void *)clbk_get_size, &info);
 
     //printf("Total read %d \n", readcount);
