@@ -11,6 +11,7 @@
 #define _countof(x) ((sizeof(x))/sizeof(x[0]))
 #endif
 
+/*
 typedef void * (* qemu_img_open_t)(const char *filename);
 typedef int (* qemu_img_read_t)(void *, int64_t offset, uint8_t *buf, size_t len);
 typedef int (* qemu_img_get_info_t)(void *, int64_t *nsectors, 
@@ -19,7 +20,14 @@ typedef int (* qemu_img_get_info_t)(void *, int64_t *nsectors,
 qemu_img_open_t qemu_img_open = NULL;
 qemu_img_read_t qemu_img_read = NULL;
 qemu_img_get_info_t qemu_img_get_info = NULL;
+*/
 
+extern void * qemu_img_open(const char *filename);
+extern int qemu_img_read(void *, int64_t offset, uint8_t *buf, size_t len);
+extern int qemu_img_get_info(void *, int64_t *nsectors, 
+                                    unsigned int *sect_size, int64_t *size);
+
+#if 0
 /* Load DLL/shared library for QEMU stubs */
 int qemu_load_lib(IMG_QEMU_INFO *qemu_info)
 {
@@ -96,23 +104,26 @@ int qemu_load_lib(IMG_QEMU_INFO *qemu_info)
 
     return 0;
 }
+#endif
 
 /* Image close */
-void qemu_close(TSK_IMG_INFO * img_info)
+void tsk_qemu_close(TSK_IMG_INFO * img_info)
 {
     IMG_QEMU_INFO *qemu_info = (IMG_QEMU_INFO *) img_info;
 
 #ifdef TSK_WIN32
     FreeLibrary(qemu_info->dll);
 #else
+#if 0
     dlclose(qemu_info->dll);
+#endif
 #endif
 
     free(qemu_info);
 }
 
 /* Read */
-ssize_t qemu_read(TSK_IMG_INFO * img_info, TSK_OFF_T offset, char *buf, 
+ssize_t tsk_qemu_read(TSK_IMG_INFO * img_info, TSK_OFF_T offset, char *buf, 
                   size_t len)
 {
     IMG_QEMU_INFO *qemu_info = (IMG_QEMU_INFO *) img_info;
@@ -120,7 +131,7 @@ ssize_t qemu_read(TSK_IMG_INFO * img_info, TSK_OFF_T offset, char *buf,
 }
 
 /* Open and init image through QEMU */
-TSK_IMG_INFO *qemu_open(const TSK_TCHAR * image, unsigned int a_ssize)
+TSK_IMG_INFO *tsk_qemu_open(const TSK_TCHAR * image, unsigned int a_ssize)
 {
 
     IMG_QEMU_INFO *qemu_info;
@@ -132,16 +143,18 @@ TSK_IMG_INFO *qemu_open(const TSK_TCHAR * image, unsigned int a_ssize)
             (IMG_QEMU_INFO *) tsk_malloc(sizeof(IMG_QEMU_INFO))) == NULL)
         return NULL;
 
+#if 0
     if(qemu_load_lib(qemu_info))
     {
         printf("Failed to load qemu DLL \n");
         return NULL;
     }
+#endif
     img_info = (TSK_IMG_INFO *) qemu_info;
 
     img_info->itype = TSK_IMG_TYPE_QEMU;
-    img_info->read = qemu_read;
-    img_info->close = qemu_close;
+    img_info->read = tsk_qemu_read;
+    img_info->close = tsk_qemu_close;
 
     //qemu does not take widechar, convert to char
     if(sizeof(TSK_TCHAR) > sizeof(char))

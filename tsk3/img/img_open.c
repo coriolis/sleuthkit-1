@@ -255,7 +255,7 @@ tsk_img_open(int num_img,
         break;
 #endif
     case TSK_IMG_TYPE_QEMU:
-        img_info = qemu_open(images[0], a_ssize);
+        img_info = tsk_qemu_open(images[0], a_ssize);
         break;
 
     default:

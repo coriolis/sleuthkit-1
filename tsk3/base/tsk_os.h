@@ -20,6 +20,14 @@
 #include <sys/sysmacros.h>
 #endif
 
+#ifdef EMSCRIPTEN
+#ifndef roundup
+#define roundup(x, y)	\
+	( ( ((x)+((y) - 1)) / (y)) * (y) )
+#endif
+
+#endif //EMSCRIPTEN
+
 #if defined(__CYGWIN__)
 #ifndef roundup
 #define roundup(x, y)	\

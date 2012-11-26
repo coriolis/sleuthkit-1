@@ -24,6 +24,7 @@
 
 #include <locale.h>
 #include <time.h>
+#include <fcntl.h>
 
 
 #define IS_WINDOWS_FS(fstype)   ((fstype == TSK_FS_TYPE_NTFS) || \
@@ -393,6 +394,23 @@ process(int argc, char **argv)
     if (g_ofile == NULL) {
         g_ofile = stdout;
     }
+
+#ifdef EMSCRIPTEN
+    { //js settings
+        sigset_t s;
+        char *t_str= "10";
+        int t_sscanf = 0;
+
+        //default verbose
+        tsk_verbose++;
+
+        OPTIND=1;
+        g_imgtype = TSK_IMG_TYPE_QEMU;
+        fcntl(0, F_GETFL);
+        sigfillset(&s);
+        sscanf(t_str, "%d", &t_sscanf); 
+    }
+#endif
 
     if (!g_img && (g_img =
             tsk_img_open(argc - OPTIND, &argv[OPTIND],
