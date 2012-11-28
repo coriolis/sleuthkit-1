@@ -40,7 +40,7 @@
  * @returns The number of bytes read or -1 on error -- which can occur if the offset is larger than the img.
  */
 static ssize_t
-raw_read(TSK_IMG_INFO * img_info, TSK_OFF_T offset, char *buf, size_t len)
+tsk_raw_read(TSK_IMG_INFO * img_info, TSK_OFF_T offset, char *buf, size_t len)
 {
     ssize_t cnt;
     IMG_RAW_INFO *raw_info = (IMG_RAW_INFO *) img_info;
@@ -116,7 +116,7 @@ raw_read(TSK_IMG_INFO * img_info, TSK_OFF_T offset, char *buf, size_t len)
 }
 
 static void
-raw_imgstat(TSK_IMG_INFO * img_info, FILE * hFile)
+tsk_raw_imgstat(TSK_IMG_INFO * img_info, FILE * hFile)
 {
     tsk_fprintf(hFile, "IMAGE FILE INFORMATION\n");
     tsk_fprintf(hFile, "--------------------------------------------\n");
@@ -126,7 +126,7 @@ raw_imgstat(TSK_IMG_INFO * img_info, FILE * hFile)
 }
 
 static void
-raw_close(TSK_IMG_INFO * img_info)
+tsk_raw_close(TSK_IMG_INFO * img_info)
 {
     IMG_RAW_INFO *raw_info = (IMG_RAW_INFO *) img_info;
 #ifdef TSK_WIN32
@@ -146,7 +146,7 @@ raw_close(TSK_IMG_INFO * img_info)
  * @returns NULL on error.
  */
 TSK_IMG_INFO *
-raw_open(const TSK_TCHAR * image, unsigned int a_ssize)
+tsk_raw_open(const TSK_TCHAR * image, unsigned int a_ssize)
 {
     IMG_RAW_INFO *raw_info;
     TSK_IMG_INFO *img_info;
@@ -160,9 +160,9 @@ raw_open(const TSK_TCHAR * image, unsigned int a_ssize)
     img_info = (TSK_IMG_INFO *) raw_info;
 
     img_info->itype = TSK_IMG_TYPE_RAW_SING;
-    img_info->read = raw_read;
-    img_info->close = raw_close;
-    img_info->imgstat = raw_imgstat;
+    img_info->read = tsk_raw_read;
+    img_info->close = tsk_raw_close;
+    img_info->imgstat = tsk_raw_imgstat;
 
     img_info->sector_size = 512;
     if (a_ssize)

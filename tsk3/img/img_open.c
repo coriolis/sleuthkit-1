@@ -169,7 +169,7 @@ tsk_img_open(int num_img,
 
         /* We'll use the raw format */
         if (num_img == 1) {
-            if ((img_info = raw_open(images[0], a_ssize)) != NULL) {
+            if ((img_info = tsk_raw_open(images[0], a_ssize)) != NULL) {
                 return img_info;
             }
             else if (tsk_errno) {
@@ -227,7 +227,7 @@ tsk_img_open(int num_img,
         if (num_img > 1)
             img_info = split_open(num_img, images, a_ssize);
         else
-            img_info = raw_open(images[0], a_ssize);
+            img_info = tsk_raw_open(images[0], a_ssize);
         break;
 
     case TSK_IMG_TYPE_RAW_SPLIT:
@@ -235,7 +235,7 @@ tsk_img_open(int num_img,
         /* If only one image file is given, and only one type was
          * given then use raw */
         if (num_img == 1)
-            img_info = raw_open(images[0], a_ssize);
+            img_info = tsk_raw_open(images[0], a_ssize);
         else
             img_info = split_open(num_img, images, a_ssize);
         break;
