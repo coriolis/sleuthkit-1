@@ -194,7 +194,7 @@ main(int argc, char **argv1)
         }
         
         if (nargc == 0) {
-            exit(0);
+            return 0;
         }
         if (strcmp(nargv[nargc - 1], img_name) == 0) {
             process(nargc, nargv);
