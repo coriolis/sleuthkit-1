@@ -36,6 +36,8 @@
                                 (fstype == TSK_FS_TYPE_EXT3)  || \
                                 (fstype == TSK_FS_TYPE_EXT4)  )
 
+#define SLT_OUTPUT_END_MARKER   ("<><><><><>")
+
 TSK_IMG_TYPE_ENUM g_imgtype = TSK_IMG_TYPE_DETECT;
 TSK_IMG_INFO *g_img = NULL;
 
@@ -154,7 +156,6 @@ main(int argc, char **argv1)
      * We have to parse a shell line and convert it to an argv, taking care of
      * backslash escaped characters. 
      */
-
     for (i = 0; i < NARGV; i++) {
         nargv[i] = (char *)calloc(256, 1);
     }
@@ -396,19 +397,26 @@ process(int argc, char **argv)
     }
 
 #ifdef EMSCRIPTEN
-    { //js settings
+    { //things required to get slt get compiled properly
         sigset_t s;
-        char *t_str= "10";
+        char t_str[10];
         int t_sscanf = 0;
 
         //default verbose
-        tsk_verbose++;
+        //tsk_verbose++;
 
-        OPTIND=1;
-        g_imgtype = TSK_IMG_TYPE_QEMU;
+        //OPTIND=1;
+        //g_imgtype = TSK_IMG_TYPE_QEMU;
         fcntl(0, F_GETFL);
         sigfillset(&s);
         sscanf(t_str, "%d", &t_sscanf); 
+
+        /*
+        tsk_fprintf(stderr, "int %d, long %d, ul %d, int64 %d, szt %d, off %d\n",
+                    sizeof(int), sizeof(long), sizeof(unsigned long),
+                    sizeof(int64_t), sizeof(size_t), sizeof(off_t));
+        */
+
     }
 #endif
 
@@ -461,6 +469,7 @@ process(int argc, char **argv)
     fs->close(fs);
     img->close(img);
     */
+    tsk_fprintf(g_ofile, "%s\n", SLT_OUTPUT_END_MARKER);
     if (g_ofile != stdout) {
         fclose(g_ofile);
         g_ofile = NULL;
