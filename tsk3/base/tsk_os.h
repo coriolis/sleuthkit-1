@@ -194,9 +194,15 @@ typedef char TSK_TCHAR;         ///< Character data type that is UTF-16 (wchar_t
 #define PRIttocTSK  "s"         ///< printf macro to print a TSK_TCHAR string to stderr or other char device
 #define PRIuSIZE "zu"           ///< printf macro to print a size_t value in non-Windows printf codes
 
+#ifdef EMSCRIPTEN
+#define GETOPT tsk_getopt       // points to local wchar version
+#define OPTIND tsk_optind
+#define OPTARG tsk_optarg
+#else
 #define GETOPT getopt           // points to system char * version
 #define OPTIND optind           // points to system char * variable
 #define OPTARG optarg           // points to system char * variable
+#endif
 
 #endif
 

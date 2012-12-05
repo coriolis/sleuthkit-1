@@ -43,7 +43,7 @@ extern "C" {
     extern void *tsk_realloc(void *, size_t);
 
 // getopt for windows
-#ifdef TSK_WIN32
+#if defined(TSK_WIN32) || defined(EMSCRIPTEN)
     extern int tsk_optind;
     extern TSK_TCHAR *tsk_optarg;
     extern int tsk_getopt(int argc, TSK_TCHAR * const argv[],
