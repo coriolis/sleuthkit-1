@@ -13,6 +13,7 @@
 #include <locale.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <limits.h> 
 
 static TSK_TCHAR *progname;
 
