@@ -424,7 +424,7 @@ process(int argc, char **argv)
             tsk_img_open(argc - OPTIND, &argv[OPTIND],
                 g_imgtype, ssize)) == NULL) {
         tsk_error_print(stderr);
-        exit(1);
+        goto end;
     }
     if (!g_fs && g_imgtype == TSK_IMG_TYPE_QEMU) {
         g_imgaddr = detect_partition_offset(g_img);
@@ -433,7 +433,7 @@ process(int argc, char **argv)
         tsk_fprintf(stderr,
             "Sector offset supplied is larger than disk image (maximum: %"
             PRIu64 ")\n", g_img->size / g_img->sector_size);
-        exit(1);
+        goto end;
     }
 
     if (!g_fs && (g_fs = tsk_fs_open_img(g_img, g_imgaddr * g_img->sector_size, g_fstype)) == NULL) {
@@ -441,7 +441,7 @@ process(int argc, char **argv)
         if (tsk_errno == TSK_ERR_FS_UNSUPTYPE)
             tsk_fs_type_print(stderr);
         g_img->close(g_img);
-        exit(1);
+        goto end;
     }
 
     if (!inode_specified) {
@@ -449,6 +449,8 @@ process(int argc, char **argv)
     }
 
     if (tsk_icat) {
+        tsk_fprintf(stderr, "Trying cat of inode %lld, type %d, id %ld\n",
+                inode, type, id);
         retval = tsk_fs_icat2(g_fs, inode, type, type_used, id, id_used,
         (TSK_FS_FILE_WALK_FLAG_ENUM) 0);
     } else if (icat_reg) {
@@ -463,12 +465,13 @@ process(int argc, char **argv)
     }
     if (retval) {
         tsk_error_print(stderr);
-        exit(retval);
+        goto end;
     }
     /*
     fs->close(fs);
     img->close(img);
     */
+end:
     tsk_fprintf(g_ofile, "%s\n", SLT_OUTPUT_END_MARKER);
     if (g_ofile != stdout) {
         fclose(g_ofile);
