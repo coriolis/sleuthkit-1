@@ -26,9 +26,21 @@ self.onmessage = function(ev) {
 
 var stdincache = Array(), stdoutcache = '', stderrcache = '';
 function generic_output(type, buffer, x) {
+
+    //convert from 2's compliment to decimal
+    if(x < 0)
+    {
+        x = (-x ^ 0xFF) ;
+        x++;
+    }
+
     buffer += String.fromCharCode(x);
     if(x == 10) {
-        self.postMessage({'type': type, 'text': buffer});
+        self.postMessage(
+                {'type': type, 
+                 'text': buffer.toString()
+                }
+                );
         buffer = '';
     }
     return buffer;
