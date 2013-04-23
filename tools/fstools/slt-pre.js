@@ -50,7 +50,7 @@ function mystdout(x) {
     stdoutcache = generic_output(1, stdoutcache, x);
 }
 function mystderr(x) {
-    stderrcache = generic_output(2, stderrcache, x);
+    //stderrcache = generic_output(2, stderrcache, x);
 }
 
 function send_log_message(x) {
