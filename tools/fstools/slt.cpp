@@ -70,6 +70,17 @@ tsk_fs_icat3(TSK_FS_INFO * fs, TSK_FS_FILE_WALK_FLAG_ENUM flags);
 
 static uint8_t tsk_get_os_info(TSK_FS_INFO * fs);
 
+extern "C" {
+extern void slt_output_done();
+}
+
+void slt_done() {
+#ifdef EMSCRIPTEN
+    slt_output_done();
+#endif
+    return;
+}
+
 
 void
 usage()
@@ -472,7 +483,8 @@ process(int argc, char **argv)
     img->close(img);
     */
 end:
-    tsk_fprintf(g_ofile, "%s\n", SLT_OUTPUT_END_MARKER);
+    //tsk_fprintf(g_ofile, "%s\n", SLT_OUTPUT_END_MARKER);
+    slt_done();
     if (g_ofile != stdout) {
         fclose(g_ofile);
         g_ofile = NULL;
