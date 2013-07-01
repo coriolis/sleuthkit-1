@@ -52,7 +52,7 @@ static uint8_t recurse = 1;
 
 static int recurse_cnt = 0;
 static TSK_DADDR_T recurse_list[64];
-static TSK_DADDR_T selected_part_start = 0;
+static TSK_DADDR_T selected_part_start = 0, prev_partition = 0;
 static TSK_DADDR_T selected_part_len = 0;
 static char selected_part_desc[256];
 
@@ -241,7 +241,7 @@ process(int argc, char **argv)
 
     OPTIND = 0;
     while ((ch =
-            GETOPT(argc, argv, _TSK_T("ab:cdDf:Fi:I:m:lo:O:prRs:tuvVz:"))) > 0) {
+            GETOPT(argc, argv, _TSK_T("ab:cdDf:Fi:I:m:lo:O:pP:rRs:tuvVz:"))) > 0) {
         switch (ch) {
         case _TSK_T('?'):
         default:
@@ -329,6 +329,14 @@ process(int argc, char **argv)
         case _TSK_T('p'):
             fls_flags |= TSK_FS_FLS_FULL;
             break;
+        case _TSK_T('P'):
+            if ((selected_part_start = tsk_parse_offset(OPTARG)) == -1) {
+                tsk_error_print(stderr);
+                exit(1);
+            }
+            fprintf(stderr, "Selected partion at %ld \n", selected_part_start);
+            break;
+
         case _TSK_T('r'):
             name_flags |= TSK_FS_DIR_WALK_FLAG_RECURSE;
             break;
@@ -437,8 +445,11 @@ process(int argc, char **argv)
         tsk_error_print(stderr);
         goto end;
     }
-    if (!g_fs && g_imgtype == TSK_IMG_TYPE_QEMU) {
-        g_imgaddr = detect_partition_offset(g_img);
+    if (g_imgtype == TSK_IMG_TYPE_QEMU) {
+        if(selected_part_start)
+            g_imgaddr = selected_part_start;
+        else
+            g_imgaddr = detect_partition_offset(g_img);
     }
     if ((g_imgaddr * g_img->sector_size) >= g_img->size) {
         tsk_fprintf(stderr,
@@ -447,11 +458,17 @@ process(int argc, char **argv)
         goto end;
     }
 
-    if (!g_fs && (g_fs = tsk_fs_open_img(g_img, g_imgaddr * g_img->sector_size, g_fstype)) == NULL) {
+    if(prev_partition && prev_partition != selected_part_start) {
+        if(g_fs) g_fs->close(g_fs);
+        prev_partition = selected_part_start;
+    }
+
+    if ((g_fs = tsk_fs_open_img(g_img, g_imgaddr * g_img->sector_size, g_fstype)) == NULL) {
         tsk_error_print(stderr);
         if (tsk_errno == TSK_ERR_FS_UNSUPTYPE)
             tsk_fs_type_print(stderr);
-        g_img->close(g_img);
+        //g_img->close(g_img);
+        selected_part_start = 0;
         goto end;
     }
 
@@ -498,6 +515,9 @@ part_act(TSK_VS_INFO *vs, const TSK_VS_PART_INFO *part, void *ptr)
 {
     if (part->flags & TSK_VS_PART_FLAG_META)
         return TSK_WALK_CONT;
+
+    printf("partition:%"PRIuDADDR":%"PRIuDADDR":%s\n", part->start, 
+            part->len*g_img->sector_size, part->desc);
 
     if (part->len > selected_part_len) {
         selected_part_len = part->len;
@@ -866,7 +886,7 @@ tsk_fs_fls2(TSK_FS_INFO * fs, TSK_FS_FLS_FLAG_ENUM lclflags,
 #endif
 }
 
-struct file_handle {
+struct reg_file_handle {
     TSK_FS_INFO * fs;
     void *handle;
     uint32_t coff;
@@ -876,7 +896,7 @@ struct file_handle {
 
 #define OS_INFO_LIB_NAME    "libosinfo.so"
 #define OS_INFO_FUN_NAME    "osi_get_os_details"
-struct file_handle regfile;
+struct reg_file_handle regfile;
 const char *regfilenames[] = { "/Windows/system32/config/software",
                                 "/Winnt/system32/config/software",
                                 NULL
