@@ -49,6 +49,7 @@ char *img_name = NULL;
 
 
 static uint8_t recurse = 1;
+static uint8_t g_dump_partitions = 1;
 
 static int recurse_cnt = 0;
 static TSK_DADDR_T recurse_list[64];
@@ -239,6 +240,7 @@ process(int argc, char **argv)
 
     fls_flags = TSK_FS_FLS_DIR | TSK_FS_FLS_FILE;
 
+    g_dump_partitions = 1;
     OPTIND = 0;
     while ((ch =
             GETOPT(argc, argv, _TSK_T("ab:cdDf:Fi:I:m:lo:O:pP:rRs:tuvVz:"))) > 0) {
@@ -263,6 +265,7 @@ process(int argc, char **argv)
             break;
         case _TSK_T('c'):
             tsk_icat = 1;
+            g_dump_partitions = 0;
             break;
         case _TSK_T('d'):
             name_flags &= ~TSK_FS_DIR_WALK_FLAG_ALLOC;
@@ -334,7 +337,7 @@ process(int argc, char **argv)
                 tsk_error_print(stderr);
                 exit(1);
             }
-            fprintf(stderr, "Selected partion at %ld \n", selected_part_start);
+            tsk_fprintf(stderr, "Selected partion at %lld \n", selected_part_start);
             break;
 
         case _TSK_T('r'):
@@ -516,8 +519,10 @@ part_act(TSK_VS_INFO *vs, const TSK_VS_PART_INFO *part, void *ptr)
     if (part->flags & TSK_VS_PART_FLAG_META)
         return TSK_WALK_CONT;
 
-    printf("partition:%"PRIuDADDR":%"PRIuDADDR":%s\n", part->start, 
-            part->len*g_img->sector_size, part->desc);
+    if(g_dump_partitions)
+        tsk_fprintf(g_ofile, 
+                "partition:%"PRIuDADDR":%"PRIuDADDR":%s\n", part->start, 
+                part->len*g_img->sector_size, part->desc);
 
     if (part->len > selected_part_len) {
         selected_part_len = part->len;
