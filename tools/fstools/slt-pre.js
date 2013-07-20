@@ -24,7 +24,6 @@ self.onmessage = function(ev) {
 };
 
 
-var is_last_message = false;
 var stdincache = Array(), stdoutcache = '', stderrcache = '';
 function generic_output(type, buffer, x) {
 
@@ -36,20 +35,21 @@ function generic_output(type, buffer, x) {
     }
 
     //do not add \n put by output end funciton
-    if(!is_last_message)
-        buffer += String.fromCharCode(x);
-    if(x == 10) {
-        self.postMessage(
-                {'type': type, 
-                 'text': buffer.toString(),
-                 'is_last_message': is_last_message
-                }
-                );
-        buffer = '';
-    }
+    buffer += String.fromCharCode(x);
     return buffer;
 }
 
+function stdout_flush()
+{
+   self.postMessage(
+       {'type': 1, 
+        'text': stdoutcache.toString(),
+        'is_last_message': true
+       }
+       );
+   stdoutcache = ''
+}
+    
 function mystdout(x) {
     stdoutcache = generic_output(1, stdoutcache, x);
 }

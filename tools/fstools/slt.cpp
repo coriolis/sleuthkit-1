@@ -36,8 +36,6 @@
                                 (fstype == TSK_FS_TYPE_EXT3)  || \
                                 (fstype == TSK_FS_TYPE_EXT4)  )
 
-#define SLT_OUTPUT_END_MARKER   ("<><><><><>")
-
 TSK_IMG_TYPE_ENUM g_imgtype = TSK_IMG_TYPE_DETECT;
 TSK_IMG_INFO *g_img = NULL;
 
@@ -149,72 +147,8 @@ main(int argc, char **argv1)
 
     img_name = strdup(argv[argc - 1]);
     process(argc, argv);
-
-    /*
-     * "This is extremely nasty, but we can't prosecute you for that."
-     * "Agreed."
-     */
-
-    /* After processing the first request, we hang around reading stdin. In
-     * case we get another request for the same image, we can process it in the
-     * same context, using the already-open image and fs. This saves a bunch of
-     * time in partition, image and FS detection and metadata loading for
-     * subsequent requests, greatly improving performance.
-     *
-     * The sender (jlfs.js) is oblivious to the presence of this mechanism.  It
-     * always emits request as a full CLI command: slt -i QEMU -I <inum> -O
-     * /dev/clipboard <imagename>
-     *
-     * We have to parse a shell line and convert it to an argv, taking care of
-     * backslash escaped characters. 
-     */
-    for (i = 0; i < NARGV; i++) {
-        nargv[i] = (char *)calloc(256, 1);
-    }
-
-    while (fgets(line, 1024, stdin)) {
-        for (i = 0; i < NARGV; i++) {
-            memset(nargv[i], 0, 256);
-        }
-        strcpy(orig, line);
-        ptr = token = line;
-        nargc = 0;
-        while (*ptr) {
-            if (*ptr == '>' || *ptr == '\n') {
-                *ptr = '\0';
-                break;
-            }
-            if (*ptr == '\\') {
-                *ptr = *(ptr + 1);
-                *(ptr + 1) = '\0';
-                strcat(nargv[nargc], token);
-                token = ptr = ptr + 2;
-            } else if (*ptr == ' ') {
-                *ptr++ = '\0';
-                strcat(nargv[nargc], token);
-                while (*ptr == ' ') {
-                    ptr++;
-                }
-                token = ptr;
-                nargc++;
-            } else {
-                ptr++;
-            }
-        }
-        if (token != ptr) {
-            strcat(nargv[nargc], token);
-            nargc++;
-        }
-        
-        if (nargc == 0) {
-            return 0;
-        }
-        if (strcmp(nargv[nargc - 1], img_name) == 0) {
-            process(nargc, nargv);
-        } else {
-            execl("/bin/sh", "/bin/sh", "-c", orig, NULL);
-        }
-    }
+    slt_done();
+    exit(0);
 }
 
 static int
@@ -504,7 +438,6 @@ process(int argc, char **argv)
     */
 end:
     //tsk_fprintf(g_ofile, "%s\n", SLT_OUTPUT_END_MARKER);
-    slt_done();
     if (g_ofile != stdout) {
         fclose(g_ofile);
         g_ofile = NULL;
