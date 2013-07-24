@@ -55,6 +55,13 @@ static TSK_DADDR_T selected_part_start = 0, prev_partition = 0;
 static TSK_DADDR_T selected_part_len = 0;
 static char selected_part_desc[256];
 
+static void
+globals_init()
+{
+    selected_part_start = 0;
+    selected_part_len = 0;
+}
+
 static TSK_TCHAR *progname;
 static TSK_DADDR_T detect_partition_offset(TSK_IMG_INFO *img);
 static int process(int argc, char **argv1);
@@ -145,6 +152,7 @@ main(int argc, char **argv1)
 #endif
     setlocale(LC_ALL, "");
 
+    globals_init();
     img_name = strdup(argv[argc - 1]);
     process(argc, argv);
     slt_done();
@@ -424,8 +432,10 @@ process(int argc, char **argv)
         retval = tsk_get_os_info(g_fs);
     } else {
         name_flags |= TSK_FS_DIR_WALK_FLAG_FAST;
+        tsk_fprintf(g_ofile, "\"files\": [");
         retval = tsk_fs_fls2(g_fs, (TSK_FS_FLS_FLAG_ENUM) fls_flags, inode,
             (TSK_FS_DIR_WALK_FLAG_ENUM) name_flags, macpre, sec_skew);
+        tsk_fprintf(g_ofile, "{}]");
         tsk_error_print(stderr);
     }
     if (retval) {
@@ -452,11 +462,13 @@ part_act(TSK_VS_INFO *vs, const TSK_VS_PART_INFO *part, void *ptr)
     if (part->flags & TSK_VS_PART_FLAG_META)
         return TSK_WALK_CONT;
 
-    if(g_dump_partitions)
+    if(g_dump_partitions) {
         tsk_fprintf(g_ofile, 
-                "partition:%"PRIuDADDR":%"PRIuDADDR":%s\n", part->start, 
-                part->len*g_img->sector_size, part->desc);
+                "{\"start\":%"PRIuDADDR", \"len\":%"PRIuDADDR", \"desc\":\"%s\"},",
+                part->start, part->len*g_img->sector_size, part->desc);
+    }
 
+    tsk_fprintf(stderr, "start %"PRIuDADDR" len %"PRIuDADDR", sstart %"PRIuDADDR", slen %"PRIuDADDR"\n", part->start, part->len, selected_part_start, selected_part_len);
     if (part->len > selected_part_len) {
         selected_part_len = part->len;
         selected_part_start = part->start;
@@ -486,10 +498,16 @@ detect_partition_offset(TSK_IMG_INFO *img)
         }
         return 0;
     }
+    if(g_dump_partitions) {
+        tsk_fprintf(g_ofile, "\"partitions\": [");
+    }
     if (tsk_vs_part_walk(vs, 0, vs->part_count - 1,
             (TSK_VS_PART_FLAG_ENUM) flags, part_act, NULL)) {
         tsk_error_print(stderr);
         tsk_vs_close(vs);
+        if(g_dump_partitions) {
+            tsk_fprintf(g_ofile, "{}],\n");
+        }
         return 0;
     }
     tsk_vs_close(vs);
@@ -516,6 +534,9 @@ detect_partition_offset(TSK_IMG_INFO *img)
     }
     if (selected_part_len) {
         fprintf(stderr, "Selected partition at offset %.10" PRIuDADDR " size %.10" PRIuDADDR " desc %s\n", selected_part_start, selected_part_len, selected_part_desc);
+    }
+    if(g_dump_partitions) {
+        tsk_fprintf(g_ofile, "{}],\n");
     }
     return selected_part_start;
 }
@@ -623,6 +644,116 @@ tsk_fs_icat3(TSK_FS_INFO * fs, TSK_FS_FILE_WALK_FLAG_ENUM flags)
     return 0;
 }
 
+/**
+* \internal
+ * Simple print of dentry type / inode type, deleted, inode, and
+ * name
+ *
+ * fs_attr is used for alternate data streams in NTFS, set to NULL
+ * for all other file systems
+ *
+ * A newline is not printed at the end
+ *
+ * If path is NULL, then skip else use. it has the full directory name
+ *  It needs to end with "/"
+ */
+static void
+tsk_fs_name_print2(FILE * hFile, const TSK_FS_FILE * fs_file,
+    const char *a_path, TSK_FS_INFO * fs, const TSK_FS_ATTR * fs_attr,
+    uint8_t print_path)
+{
+    size_t i;
+
+    /* type of file - based on dentry type */
+    tsk_fprintf(hFile, "\"dtype\":\"");
+    if (fs_file->name->type < TSK_FS_NAME_TYPE_STR_MAX)
+        tsk_fprintf(hFile, "%s",
+            tsk_fs_name_type_str[fs_file->name->type]);
+
+    tsk_fprintf(hFile, "\",");
+    /* type of file - based on inode type: we want letters though for
+     * regular files so we use the dent_str though */
+    tsk_fprintf(hFile, "\"itype\":\"");
+    if (fs_file->meta) {
+        /* 
+         * An NTFS directory can have a Data stream, in which
+         * case it would be printed with modes of a
+         * directory, although it is really a file
+         * So, to avoid confusion we will set the modes
+         * to a file so it is printed that way.  The
+         * entry for the directory itself will still be
+         * printed as a directory
+         */
+        if ((fs_attr) && (fs_attr->type == TSK_FS_ATTR_TYPE_NTFS_DATA) &&
+            (fs_file->meta->type == TSK_FS_META_TYPE_DIR)) {
+            tsk_fprintf(hFile, "r");
+        }
+        else {
+            if (fs_file->meta->type < TSK_FS_META_TYPE_STR_MAX)
+                tsk_fprintf(hFile, "%s",
+                    tsk_fs_meta_type_str[fs_file->meta->type]);
+        }
+    }
+    tsk_fprintf(hFile, "\",");
+
+    /* print a * if it is deleted */
+    if (fs_file->name->flags & TSK_FS_NAME_FLAG_UNALLOC)
+        tsk_fprintf(hFile, "\"deleted\":true,");
+
+    tsk_fprintf(hFile, "\"inum\":%" PRIuINUM ",", fs_file->name->meta_addr);
+
+    /* print the id and type if we have fs_attr (NTFS) */
+    if (fs_attr)
+        tsk_fprintf(hFile, "\"attrtype:%" PRIu32 ",\"attrid:%" PRIu16 ",",
+            fs_attr->type, fs_attr->id);
+
+    if ((fs_file->meta) && (fs_file->meta->flags & TSK_FS_META_FLAG_ALLOC)
+            && (fs_file->name->flags & TSK_FS_NAME_FLAG_UNALLOC)) {
+            tsk_fprintf(hFile, "\"realloc\":true,");
+    }
+
+    if ((print_path) && (a_path != NULL)) {
+        tsk_fprintf(hFile, "\"path\":\"");
+        for (i = 0; i < strlen(a_path); i++) {
+            if (TSK_IS_CNTRL(a_path[i]))
+                tsk_fprintf(hFile, "^");
+            else
+                tsk_fprintf(hFile, "%c", a_path[i]);
+        }
+        tsk_fprintf(hFile, "\",");
+    }
+
+    tsk_fprintf(hFile, "\"name\":\"");
+    for (i = 0; i < strlen(fs_file->name->name); i++) {
+        if (TSK_IS_CNTRL(fs_file->name->name[i]))
+            tsk_fprintf(hFile, "^");
+        else
+            tsk_fprintf(hFile, "%c", fs_file->name->name[i]);
+    }
+    tsk_fprintf(hFile, "\",");
+
+/*  This will add the short name in parentheses
+    if (fs_file->name->shrt_name != NULL && fs_file->name->shrt_name[0] != '\0')
+	tsk_fprintf(hFile, " (%s)", fs_file->name->shrt_name);
+*/
+
+    /* print the data stream name if we the non-data NTFS stream */
+    if ((fs_attr) && (fs_attr->name)) {
+        if ((fs_attr->type != TSK_FS_ATTR_TYPE_NTFS_IDXROOT) ||
+            (strcmp(fs_attr->name, "$I30") != 0)) {
+            tsk_fprintf(hFile, "\"attrname\":\"");
+            for (i = 0; i < strlen(fs_attr->name); i++) {
+                if (TSK_IS_CNTRL(fs_attr->name[i]))
+                    tsk_fprintf(hFile, "^");
+                else
+                    tsk_fprintf(hFile, "%c", fs_attr->name[i]);
+            }
+            tsk_fprintf(hFile, "\",");
+        }
+    }
+
+    return;
+}
 /** \internal 
 * Structure to store data for callbacks.
 */
@@ -636,6 +767,128 @@ typedef struct {
 } FLS_DATA;
 
 
+static void
+tsk_fs_print_time(FILE * hFile, time_t time)
+{
+    if (time <= 0) {
+        tsk_fprintf(hFile, "0000-00-00 00:00:00 (UTC)");
+    }
+    else {
+        struct tm *tmTime = localtime(&time);
+
+        tsk_fprintf(hFile, "%.4d-%.2d-%.2d %.2d:%.2d:%.2d (%s)",
+            (int) tmTime->tm_year + 1900,
+            (int) tmTime->tm_mon + 1, (int) tmTime->tm_mday,
+            tmTime->tm_hour,
+            (int) tmTime->tm_min, (int) tmTime->tm_sec,
+            tzname[(tmTime->tm_isdst == 0) ? 0 : 1]);
+    }
+}
+
+
+/**
+ * The only difference with this one is that the time is always
+ * 00:00:00, which is applicable for the A-Time in FAT, which does
+ * not have a time and if we do it normally it gets messed up because
+ * of the timezone conversion
+ */
+static void
+tsk_fs_print_day(FILE * hFile, time_t time)
+{
+    if (time <= 0) {
+        tsk_fprintf(hFile, "0000-00-00 00:00:00 (UTC)");
+    }
+    else {
+        struct tm *tmTime = localtime(&time);
+
+        tsk_fprintf(hFile, "%.4d-%.2d-%.2d 00:00:00 (%s)",
+            (int) tmTime->tm_year + 1900,
+            (int) tmTime->tm_mon + 1, (int) tmTime->tm_mday,
+            tzname[(tmTime->tm_isdst == 0) ? 0 : 1]);
+    }
+}
+
+
+/**
+ * \internal
+ * Print contents of  fs_name entry format like ls -l
+**
+** If path is NULL, then skip else use. it has the full directory name
+**  It needs to end with "/"
+*/
+void
+tsk_fs_name_print_long2(FILE * hFile, const TSK_FS_FILE * fs_file,
+    const char *a_path, TSK_FS_INFO * fs, const TSK_FS_ATTR * fs_attr,
+    uint8_t print_path, int32_t sec_skew)
+{
+    tsk_fprintf(hFile, "{");
+    tsk_fs_name_print2(hFile, fs_file, a_path, fs, fs_attr, print_path);
+
+    if ((fs == NULL) || (fs_file->meta == NULL)) {
+
+        tsk_fprintf(hFile, "\"mtime\":\"");
+        tsk_fs_print_time(hFile, 0);    // mtime
+        tsk_fprintf(hFile, "\",");
+        tsk_fprintf(hFile, "\"atime\":\"");
+        tsk_fs_print_time(hFile, 0);    // atime
+        tsk_fprintf(hFile, "\",");
+        tsk_fprintf(hFile, "\"ctime\":\"");
+        tsk_fs_print_time(hFile, 0);    // ctime
+        tsk_fprintf(hFile, "\",");
+        tsk_fprintf(hFile, "\"crtime\":\"");
+        tsk_fs_print_time(hFile, 0);    // crtime
+        tsk_fprintf(hFile, "\",");
+
+        // size, uid, gid
+        tsk_fprintf(hFile, "\"size\":0,\"uid\":0,\"gid\":0");
+    }
+    else {
+
+        /* MAC times */
+        tsk_fprintf(hFile, "\"mtime\":\"");
+        if (fs_file->meta->mtime)
+            tsk_fs_print_time(hFile, fs_file->meta->mtime - sec_skew);
+        else
+            tsk_fs_print_time(hFile, fs_file->meta->mtime);
+        tsk_fprintf(hFile, "\",");
+
+        /* FAT only gives the day of last access */
+        tsk_fprintf(hFile, "\"atime\":\"");
+        if ((TSK_FS_TYPE_ISFAT(fs->ftype)) || (fs_file->meta->atime == 0))
+            tsk_fs_print_day(hFile, fs_file->meta->atime);
+        else
+            tsk_fs_print_time(hFile, fs_file->meta->atime - sec_skew);
+        tsk_fprintf(hFile, "\",");
+
+        tsk_fprintf(hFile, "\"ctime\":\"");
+        if (fs_file->meta->ctime)
+            tsk_fs_print_time(hFile, fs_file->meta->ctime - sec_skew);
+        else
+            tsk_fs_print_time(hFile, fs_file->meta->ctime);
+        tsk_fprintf(hFile, "\",");
+
+        tsk_fprintf(hFile, "\"crtime\":\"");
+        if (fs_file->meta->crtime)
+            tsk_fs_print_time(hFile, fs_file->meta->crtime - sec_skew);
+        else
+            tsk_fs_print_time(hFile, fs_file->meta->crtime);
+        tsk_fprintf(hFile, "\",");
+
+        /* use the stream size if one was given */
+        tsk_fprintf(hFile, "\"size\":");
+        if (fs_attr)
+            tsk_fprintf(hFile, "\t%" PRIuOFF, fs_attr->size);
+        else
+            tsk_fprintf(hFile, "\t%" PRIuOFF, fs_file->meta->size);
+        tsk_fprintf(hFile, ",");
+
+        tsk_fprintf(hFile, "\"gid\":%" PRIuGID ",\"uid\":%" PRIuUID "",
+            fs_file->meta->gid, fs_file->meta->uid);
+    }
+
+    tsk_fprintf(hFile, "},");
+    return;
+}
 
 
 /* this is a wrapper type function that takes care of the runtime
@@ -668,7 +921,7 @@ printit(TSK_FS_FILE * fs_file, const char *a_path,
             fs_attr, fls_data->macpre, fls_data->sec_skew);
     }
     else if (fls_data->flags & TSK_FS_FLS_LONG) {
-        tsk_fs_name_print_long(g_ofile, fs_file, a_path, fs_file->fs_info,
+        tsk_fs_name_print_long2(g_ofile, fs_file, a_path, fs_file->fs_info,
             fs_attr, TSK_FS_FLS_FULL & fls_data->flags ? 1 : 0,
             fls_data->sec_skew);
     }
@@ -1021,5 +1274,4 @@ static uint8_t tsk_get_os_info(TSK_FS_INFO * fs)
 
     return 0;
 }
-
 

@@ -50,11 +50,20 @@ function stdout_flush()
    stdoutcache = ''
 }
     
+function stderr_flush()
+{
+//    send_log_message(stderrcache);
+    stderrcache = '';
+}
+
 function mystdout(x) {
     stdoutcache = generic_output(1, stdoutcache, x);
 }
 function mystderr(x) {
-    //stderrcache = generic_output(2, stderrcache, x);
+    stderrcache = generic_output(2, stderrcache, x);
+    if (x == '\n') {
+        stderr_flush();
+    }
 }
 
 function send_log_message(x) {
