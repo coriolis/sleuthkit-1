@@ -15,6 +15,8 @@ self.onmessage = function(ev) {
             } 
             catch(e) {
                 //pass
+                send_log_message("ERROR :"+ e);
+
             }
 
             break;
@@ -52,7 +54,7 @@ function stdout_flush()
     
 function stderr_flush()
 {
-//    send_log_message(stderrcache);
+    send_log_message(stderrcache);
     stderrcache = '';
 }
 
@@ -61,13 +63,13 @@ function mystdout(x) {
 }
 function mystderr(x) {
     stderrcache = generic_output(2, stderrcache, x);
-    if (x == '\n') {
+    if (x == 10) {
         stderr_flush();
     }
 }
 
 function send_log_message(x) {
-        self.postMessage({'type': 2, 'text': x});
+        self.postMessage({'type': 2, 'text': x.toString()});
 }
 
 function mystdin() {
