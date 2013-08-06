@@ -156,7 +156,7 @@ main(int argc, char **argv1)
     img_name = strdup(argv[argc - 1]);
     process(argc, argv);
     slt_done();
-    exit(0);
+    //exit(0);
 }
 
 static int
@@ -1094,7 +1094,7 @@ const char *regfilenames[] = { "/Windows/system32/config/software",
                             };
 typedef int (* osi_get_os_details_t)(const char *os, void *open, void *cl, void *read, void *lseek, char ***info);
 static void *oslib = NULL;
-static osi_get_os_details_t osi_get_os_details = NULL;
+//static osi_get_os_details_t osi_get_os_details = NULL;
 static int dumpfd = 0;
 static int readcount = 0;
 #define BUF_33MB    (33*1024*1024)
@@ -1146,7 +1146,20 @@ int clbk_close(int fd)
     return 0;
 }
 
-int clbk_read(int fd, char *buf, size_t size, size_t off)
+int clbk_read(int fd, char *buf, size_t size)
+{
+    int ret = 0;
+    ret = tsk_fs_file_read((TSK_FS_FILE *)regfile.handle, regfile.coff, buf, size, 
+                            (TSK_FS_FILE_READ_FLAG_ENUM)0);
+
+    if(dumpfd) {
+        int x =0;
+        x =write(dumpfd, buf, ret);
+    }
+    //fprintf(g_ofile, "Read %d asked %ld \n", ret, size);
+    return ret;
+}
+int clbk_pread(int fd, char *buf, size_t size, size_t off)
 {
     int ret = 0;
     regfile.coff = off;
@@ -1205,7 +1218,14 @@ void print_osinfo(char **info)
     return;
 }
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+extern int osi_get_os_details(char *os, void *op, void *cl, void *rd, void *sz, char ***osinfo);
 
+#ifdef __cplusplus
+}
+#endif
 static uint8_t tsk_get_os_info(TSK_FS_INFO * fs)
 {
     char **info = NULL;
@@ -1223,7 +1243,7 @@ static uint8_t tsk_get_os_info(TSK_FS_INFO * fs)
     }
 #endif
     memset(&regfile, 0, sizeof(regfile));
-
+#if 0
     oslib = dlopen(OS_INFO_LIB_NAME, RTLD_LAZY);
     if (!oslib) {
         fprintf(stderr, "Failed to load library %s due to %s",
@@ -1237,13 +1257,14 @@ static uint8_t tsk_get_os_info(TSK_FS_INFO * fs)
                 OS_INFO_FUN_NAME, error);
         return 1;
     }
+#endif
 
     regfile.fs = fs;
     
     if(IS_WINDOWS_FS(fs->ftype))
-        i = osi_get_os_details("windows", (void *)clbk_open, (void *)clbk_close, (void *) clbk_read, (void *)clbk_get_size, &info);
+        i = osi_get_os_details("windows", (void *)clbk_open, (void *)clbk_close, (void *) clbk_read, (void *)clbk_seek, &info);
     else if(IS_LINUX_FS(fs->ftype)) 
-        i = osi_get_os_details("linux", (void *)clbk_open, (void *)clbk_close, (void *) clbk_read, (void *)clbk_get_size, &info);
+        i = osi_get_os_details("linux", (void *)clbk_open, (void *)clbk_close, (void *) clbk_read, (void *)clbk_seek, &info);
     else
         fprintf(stderr, "OS information from this FS %d cannot be found\n", fs->ftype);
 
