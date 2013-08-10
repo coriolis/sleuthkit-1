@@ -25,6 +25,8 @@ self.onmessage = function(ev) {
 
 };
 
+//set this true to debug
+var send_stderr = false;
 
 var stdincache = Array(), stdoutcache = '', stderrcache = '';
 function generic_output(type, buffer, x) {
@@ -62,6 +64,8 @@ function mystdout(x) {
     stdoutcache = generic_output(1, stdoutcache, x);
 }
 function mystderr(x) {
+    if(!send_stderr)
+        return;
     stderrcache = generic_output(2, stderrcache, x);
     if (x == 10) {
         stderr_flush();
