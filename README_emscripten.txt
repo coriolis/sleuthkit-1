@@ -4,6 +4,9 @@ How to compile sleuthkit using emscripten for VMXRay?
 * Pre-requisites:
 -----------------
 
+- Clang + llvm 
+  - Get clang+llvm-3.1-x86_64-linux-ubuntu_12.04
+
 - Emscripten from VMXRay git repository 
   - Repo: git@github.com:coriolis/emscripten.git
   - Branch: master
@@ -14,6 +17,10 @@ How to compile sleuthkit using emscripten for VMXRay?
 
 - Sleuthkit from VMXRay git repository 
   - Repo: git@github.com:coriolis/sleuthkit-1.git 
+  - Branch: emscripten
+
+- VM inspection from VMXRay git repository 
+  - Repo: git@github.com:coriolis/vminspection.git 
   - Branch: emscripten
 
 
@@ -28,7 +35,7 @@ How to compile sleuthkit using emscripten for VMXRay?
 - Compile QEMU library - qemu-img-lib.bc
 
   $ cd <qemu_library>
-  $ emconfigure ./configure
+  $ emconfigure ./configure --disable-kvm --disable-spice --disable-guest-agent
   $ emmake make
   $ ./make_qemu_lib_js.sh
   
