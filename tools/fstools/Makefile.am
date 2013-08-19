@@ -1,4 +1,5 @@
 AM_CPPFLAGS = -I../.. -I$(srcdir)/../.. -Wall 
+INCLUDES = -I$(top_builddir)/../zipfile/minizip
 LDADD = ../../tsk3/libtsk3.la
 LDFLAGS += -static
 EXTRA_DIST = .indent.pro fscheck.cpp

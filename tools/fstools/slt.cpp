@@ -22,6 +22,8 @@
 #include "tsk3/tsk_tools_i.h"
 #include "tsk3/fs/tsk_fs_i.h"
 
+#include "zip.h"
+
 #include <locale.h>
 #include <time.h>
 #include <fcntl.h>
@@ -76,6 +78,10 @@ tsk_fs_icat3(TSK_FS_INFO * fs, TSK_FS_FILE_WALK_FLAG_ENUM flags);
 
 static uint8_t tsk_get_os_info(TSK_FS_INFO * fs);
 
+static uint8_t
+tsk_fs_dcat(TSK_FS_INFO * fs, TSK_FS_FLS_FLAG_ENUM lclflags,
+    TSK_INUM_T inode, char *zfname, TSK_FS_DIR_WALK_FLAG_ENUM flags, TSK_TCHAR * tpre,
+    int32_t skew);
 extern "C" {
 extern void slt_output_done();
 }
@@ -172,7 +178,8 @@ process(int argc, char **argv)
     static TSK_TCHAR *macpre = NULL;
     unsigned int ssize = 0;
     TSK_TCHAR *cp;
-    int tsk_icat = 0, icat_reg = 0, slt_osinfo=0;
+    int tsk_icat = 0, icat_reg = 0, slt_osinfo=0, tsk_dcat = 0;
+    char *zfname = NULL;
     uint16_t id = 0;
     uint8_t id_used, type_used = 0;
     int retval;
@@ -185,7 +192,7 @@ process(int argc, char **argv)
     g_dump_partitions = 1;
     OPTIND = 0;
     while ((ch =
-            GETOPT(argc, argv, _TSK_T("ab:cdDf:Fi:I:m:lo:O:pP:rRs:tuvVz:"))) > 0) {
+            GETOPT(argc, argv, _TSK_T("ab:cdDe:f:Fi:I:m:lo:O:pP:rRs:tuvVz:"))) > 0) {
         switch (ch) {
         case _TSK_T('?'):
         default:
@@ -215,6 +222,12 @@ process(int argc, char **argv)
         case _TSK_T('D'):
             fls_flags &= ~TSK_FS_FLS_FILE;
             fls_flags |= TSK_FS_FLS_DIR;
+            break;
+        case _TSK_T('e'):
+            tsk_dcat = 1;
+            name_flags |= TSK_FS_DIR_WALK_FLAG_RECURSE;
+            zfname = strdup(OPTARG);
+            g_dump_partitions = 0;
             break;
         case _TSK_T('f'):
             if (TSTRCMP(OPTARG, _TSK_T("list")) == 0) {
@@ -430,6 +443,9 @@ process(int argc, char **argv)
         retval = tsk_fs_icat3(g_fs, (TSK_FS_FILE_WALK_FLAG_ENUM)0);
     } else if (slt_osinfo) {
         retval = tsk_get_os_info(g_fs);
+    } else if (tsk_dcat) {
+        retval = tsk_fs_dcat(g_fs, (TSK_FS_FLS_FLAG_ENUM) fls_flags, inode, zfname,
+            (TSK_FS_DIR_WALK_FLAG_ENUM) name_flags, macpre, sec_skew);
     } else {
         name_flags |= TSK_FS_DIR_WALK_FLAG_FAST;
         tsk_fprintf(g_ofile, "\"files\": [");
@@ -764,6 +780,8 @@ typedef struct {
     /*directory prefix for printing mactime output */
     char *macpre;
     int flags;
+    zipFile zf;
+    zip_fileinfo zi;
 } FLS_DATA;
 
 
@@ -1014,6 +1032,163 @@ print_dent_act(TSK_FS_FILE * fs_file, const char *a_path, void *ptr)
         }
     }
     return TSK_WALK_CONT;
+}
+
+/* convert unix time to time for zip
+ */
+static void get_ziptime(TSK_FS_FILE *fs_file, tm_zip *tmzip)
+{
+    struct tm *ft;
+    time_t t;
+
+    if(fs_file == NULL || fs_file->meta == NULL || tmzip == NULL)
+        return;
+
+    t = fs_file->meta->mtime;
+    ft = localtime(&t);
+
+    if(ft == NULL)
+        return;
+
+  tmzip->tm_sec  = ft->tm_sec;
+  tmzip->tm_min  = ft->tm_min;
+  tmzip->tm_hour = ft->tm_hour;
+  tmzip->tm_mday = ft->tm_mday;
+  tmzip->tm_mon  = ft->tm_mon ;
+  tmzip->tm_year = ft->tm_year;
+
+  return;
+
+}
+
+/* Call back action for file_dump
+ */
+static TSK_WALK_RET_ENUM
+idump_action(TSK_FS_FILE * fs_file, TSK_OFF_T a_off, TSK_DADDR_T addr,
+    char *buf, size_t size, TSK_FS_BLOCK_FLAG_ENUM flags, void *ptr)
+{
+    FLS_DATA *fls_data = (FLS_DATA *) ptr;
+    if (size == 0)
+        return TSK_WALK_CONT;
+
+    zipWriteInFileInZip(fls_data->zf, buf, size);
+    return TSK_WALK_CONT;
+
+}
+
+/* 
+ * call back action function for dent_walk for directory dump
+ */
+static TSK_WALK_RET_ENUM
+dump_dent_act(TSK_FS_FILE * fs_file, const char *a_path, void *ptr)
+{
+    FLS_DATA *fls_data = (FLS_DATA *) ptr;
+    int err = 0;
+    char fname[1024];
+
+    if (TSK_FS_ISDOT(fs_file->name->name))
+        return TSK_WALK_CONT;
+
+    /* only print dirs if TSK_FS_FLS_DIR is set and only print everything
+     ** else if TSK_FS_FLS_FILE is set (or we aren't sure what it is)
+     */
+    if (((fls_data->flags & TSK_FS_FLS_DIR) &&
+            ((fs_file->meta) &&
+                (fs_file->meta->type == TSK_FS_META_TYPE_DIR)))
+        || ((fls_data->flags & TSK_FS_FLS_FILE) && (((fs_file->meta)
+                    && (fs_file->meta->type != TSK_FS_META_TYPE_DIR))
+                || (!fs_file->meta)))) {
+
+        if(tsk_verbose)
+            fprintf(stderr, "\nGot %s %s \n", a_path, fs_file->name->name);
+        //if its dir continue walk
+        if (fs_file->meta->type == TSK_FS_META_TYPE_DIR) {
+            return TSK_WALK_CONT;
+        }
+        else {
+            //if its file, create new file in zip
+
+            snprintf(fname, sizeof(fname) - 1, "%s%s", a_path, fs_file->name->name);
+            memset(&fls_data->zi, 0, sizeof((fls_data->zi)));
+            get_ziptime(fs_file, &fls_data->zi.tmz_date);
+
+            err = zipOpenNewFileInZip3_64(fls_data->zf, fname, &fls_data->zi, 
+                    NULL, 0, NULL, 0, NULL,
+                    Z_DEFLATED, Z_DEFAULT_COMPRESSION, 0,
+                    -MAX_WBITS, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY, NULL, 0, 0);
+            if(err != ZIP_OK)
+            {
+                printf("Failed to open zip entry \n");
+                return TSK_WALK_CONT;
+            }
+
+
+            //walk the file for contents
+            if (tsk_fs_file_walk(fs_file, TSK_FS_FILE_WALK_FLAG_NOID, 
+                                idump_action, fls_data))
+            {
+                tsk_error_print(stderr);
+            }
+
+            zipCloseFileInZip(fls_data->zf);
+        }
+
+    }
+    return TSK_WALK_CONT;
+}
+
+/* Returns 0 on success and 1 on error */
+static uint8_t
+tsk_fs_dcat(TSK_FS_INFO * fs, TSK_FS_FLS_FLAG_ENUM lclflags,
+    TSK_INUM_T inode, char *zfname, TSK_FS_DIR_WALK_FLAG_ENUM flags, TSK_TCHAR * tpre,
+    int32_t skew)
+{
+    FLS_DATA data;
+    int ret = 0;
+    int fd = 0, rc = 0;
+    char buf[4096] = { 0 };
+
+    memset(&data, 0, sizeof(data));
+    data.flags = lclflags;
+    data.sec_skew = skew;
+
+    data.macpre = tpre;
+    if(tsk_verbose)
+        fprintf(stderr, "Doing dir walk for %ld\n", inode);
+    {
+        //create zip file
+        if(tsk_verbose)
+            fprintf(stderr, "Creating zipfilen %s \n", zfname);
+        data.zf = zipOpen64(zfname, 0);
+        if(data.zf == NULL)
+        {
+            fprintf(stderr, "Failed to create zip \n");
+            return TSK_WALK_ERROR;
+        }
+    }
+
+    ret = tsk_fs_dir_walk(fs, inode, flags, dump_dent_act, &data);
+    zipClose(data.zf, NULL);
+
+    //dump zip file
+    if((fd = open(zfname, O_RDONLY)) < 0 )
+    {
+        fprintf(stderr, "Failed to open zip \n");
+        return TSK_WALK_ERROR;
+    }
+
+    do
+    {
+        rc = read(fd, buf, sizeof(buf));
+        fwrite(buf, rc, 1, g_ofile);
+    }while(rc > 0);
+
+    close(fd);
+    fflush(g_ofile);
+
+    free(zfname);
+
+    return ret;
 }
 
 

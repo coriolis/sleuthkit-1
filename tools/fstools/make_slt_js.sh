@@ -12,7 +12,15 @@ if [ ! -f $LIB_OS_INFO ] ; then
     LIB_OS_INFO=""
 fi
 
-emcc  slt.o ../../tsk3/.libs/libtsk3.a $LIB_OS_INFO ./qemu-img-lib.bc -O1 -o slt.js --pre-js slt-pre.js --js-library slt-lib.js
+LIB_ZIP="./libminizip.bc"
+if [ ! -f $LIB_ZIP ] ; then
+    echo "Warning: file libminizip.bc not found. OSInfo button will not work"
+    echo "Copy libminizip.bc file from minizip source directory in this folder, generated after compiling minizip."
+    exit 0
+    LIB_ZIP=""
+fi
+
+emcc slt.o ../../tsk3/.libs/libtsk3.a $LIB_ZIP $LIB_OS_INFO ./qemu-img-lib.bc -O1 -o slt.js --pre-js slt-pre.js --js-library slt-lib.js
 
 #-s EXPORTED_FUNCTIONS=['_pread'] 
 #-s RUNTIME_LINKED_LIBS="['qemu-img-lib.js']" 
