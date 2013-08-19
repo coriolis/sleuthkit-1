@@ -23,6 +23,10 @@ How to compile sleuthkit using emscripten for VMXRay?
   - Repo: git@github.com:coriolis/vminspection.git 
   - Branch: emscripten
 
+- zipfile from VMXRay git repository 
+  - Repo: git@github.com:coriolis/zipfile.git 
+  - Branch: emscripten
+
 - vmxray.com from VMXRay git repository
   - Repo: git@github.com:coriolis/vmxray.com.git
   - Branch: emscripten
@@ -49,6 +53,23 @@ How to compile sleuthkit using emscripten for VMXRay?
   hasn't been completely ported for emscripten. However, required modules,
   files for VMXRay get compiled appropriately.
 
+----------------------------------------------------
+- Compile zipfile library - libminizip.bc
+ $ cd zipfile
+ $ emmake make
+ 
+ - The file will be present in zipfile/minizip/libminizip.bc
+ - Copy this file to sleuthkit/tools/fstools folder.
+
+----------------------------------------------------
+- Compile osinfo lib - osinfo-lib.bc
+
+ $ cd osinfo/
+ $ ./make_osinfo_js.sh
+   - Copy "osinfo-lib.bc" file to sleuthkit/tools/fstools folder.
+
+
+----------------------------------------------------
 - Compile sleuthkit - slt.js
 
  $ cd <sleuthkit>
@@ -72,12 +93,7 @@ How to compile sleuthkit using emscripten for VMXRay?
  - The last step will give "slt.js" that is used on the VMXRay website.
 
 
-- Compile vmxray.com
+----------------------------------------------------
+- vmxray.com
 
- $ cd <vmxray.com>
- $ emake make
- $ cd osinfo/
- $ ./make_osinfo_js.sh
-   - Copy "osinfo-lib.bc" file to sleuthkit/tools/fsfolder.
-
-   - Also, copy slt.js created while compiling "sleuthkit" to "vmxray.com/js" folder.
+   - Copy slt.js created while compiling "sleuthkit" to "vmxray.com/js" folder.
